@@ -8,7 +8,7 @@ class Bullet:
         self.direction = direction.normalize() if direction.length() > 0 else direction #to deal with that normalize bug encountered earlier
         self.speed = BULLET_SPEED
 
-        self.rect = pygame.Rect(0,0,0)
+        self.rect = pygame.Rect(0,0,8,8)
         self.rect.center = self.position
 
     def update(self, dt):
