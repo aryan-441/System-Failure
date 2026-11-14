@@ -10,9 +10,11 @@ from enemy import Enemy
 from enemy_spawner import EnemySpawner
 from highscore import load_high_score, get_high_score
 from background import SpaceBackground
+from ship_sprites import ShipSprites
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 clock = pygame.time.Clock()
+ship_sprites = ShipSprites()
 background = SpaceBackground(WIDTH, HEIGHT)
 running = True
 malfunction = 'NONE'
@@ -24,7 +26,7 @@ new_record = False
 shot_timer = 0
 damage_timer = 0
 ammo = 16
-ammo_per_kill = 4
+ammo_per_kill = 5
 max_ammo = 24
 empty_ammo_timer = 0
 player = Player(WIDTH/2, HEIGHT/2)
@@ -33,6 +35,8 @@ enemies = [
     Enemy(800, 150),
     Enemy(150, 400)
 ]
+for enemy in enemies:
+    ship_sprites.prepare_enemy(enemy, allow_boss=False)
 
 # ENEMY SPAWNER
 spawner = EnemySpawner()
@@ -107,8 +111,11 @@ while running:
         spawner.spawn_interval = 2.5
 
     # AUTOMATIC ENEMY SPAWNING
+      
     if spawner.update(dt):
-        enemies.append(spawner.spawn())
+        new_enemy = spawner.spawn()
+        ship_sprites.prepare_enemy(new_enemy)
+        enemies.append(new_enemy)
 
     for enemy in enemies:
         enemy.update(dt,player.position)
@@ -151,6 +158,7 @@ while running:
         for enemy in enemies[:]:  #nested list
             if bullet.rect.colliderect(enemy.rect):
                 bullets.remove(bullet)
+                enemy_last_tick = pygame.time.get_ticks()
 
                 if enemy.take_damage(1):
                     enemies.remove(enemy)
@@ -178,12 +186,11 @@ while running:
         pygame.display.set_caption("COLLISION DETECTED!")
     else:
         pygame.display.set_caption("SYSTEM FAILURE: Bounce Back")
-
+        
     screen.fill(BG_COLOUR)
-    background.draw(screen)
-    player.draw(screen)
+    ship_sprites.draw_player(screen, player, mouse_pos)
     for enemy in enemies:
-        enemy.draw(screen)
+        ship_sprites.draw_enemy(screen, enemy)
 
     for bullet in bullets:
          bullet.draw(screen)
