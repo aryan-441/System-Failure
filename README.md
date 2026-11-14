@@ -1,4 +1,7 @@
 # System-Failure
+
+**[Play System Failure on itch.io](https://systemfailuregame.itch.io/home)**
+
 System-Failure is a unique space-shooter game produced for the Haven Pune GameJam. 
 
 It is a 2D arcade game where the player controls a spaceship and has to defeat increasingly difficult waves of enemies. The user is constrained by 5 health points and limited ammunition.
