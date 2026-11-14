@@ -8,10 +8,12 @@ from player import Player
 from bullet import Bullet
 from enemy import Enemy
 from enemy_spawner import EnemySpawner
-from highscore import load_high_score, save_high_score
+from highscore import load_high_score, get_high_score
+from background import SpaceBackground
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 clock = pygame.time.Clock()
+background = SpaceBackground(WIDTH, HEIGHT)
 running = True
 malfunction = 'NONE'
 bullets = []
@@ -21,8 +23,8 @@ previous_high_score = high_score
 new_record = False
 shot_timer = 0
 damage_timer = 0
-ammo = 18
-ammo_per_kill = 3
+ammo = 16
+ammo_per_kill = 4
 max_ammo = 24
 empty_ammo_timer = 0
 player = Player(WIDTH/2, HEIGHT/2)
@@ -41,6 +43,7 @@ restart_font = pygame.font.Font(None, 32)
 
 while running:
     dt = clock.tick(FPS) / 1000  #change in time
+    background.update(dt)  #bg updates after each line
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
@@ -73,6 +76,7 @@ while running:
 
     if player.health <= 0:
         screen.fill(BG_COLOUR)
+        background.draw(screen)
 
         title = game_over_font.render("SYSTEM FAILURE", True, (255, 65, 85))
         score_display = font.render(f"FINAL SCORE: {score}", True, (255, 255, 255))
@@ -156,7 +160,7 @@ while running:
                     if score > high_score:
                         new_record = True
                         high_score = score
-                        save_high_score(high_score)
+                        get_high_score(high_score)
 
                 break
     collision = False
@@ -176,6 +180,7 @@ while running:
         pygame.display.set_caption("SYSTEM FAILURE: Bounce Back")
 
     screen.fill(BG_COLOUR)
+    background.draw(screen)
     player.draw(screen)
     for enemy in enemies:
         enemy.draw(screen)
