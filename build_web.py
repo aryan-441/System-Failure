@@ -71,10 +71,13 @@ def build():
             regions, count = pack_images(archive)
             sounds = pack_audio(archive)
             manifest = {"sprites": regions, "backgroundCount": count, "sounds": sounds}
-            archive.writestr("media.js", "export const media = " + json.dumps(manifest, separators=(",", ":")) + ";")
+            scripts = ["const media = " + json.dumps(manifest, separators=(",", ":")) + ";"]
+            for filename in ("simulation.js", "render.js", "play.js"):
+                scripts.append((WEB / filename).read_text(encoding="utf-8"))
+            archive.writestr("flight.js", "(() => {\n'use strict';\n" + "\n".join(scripts) + "\n})();")
             archive.write(IMAGES / "player/player_ship_blue.png", "favicon.png")
             for page in sorted(WEB.iterdir()):
-                if page.suffix in (".css", ".html", ".js"):
+                if page.suffix in (".css", ".html"):
                     archive.write(page, page.name)
         pending.replace(destination)
     print(f"{destination} ({destination.stat().st_size:,} bytes)")

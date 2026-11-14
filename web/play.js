@@ -1,7 +1,3 @@
-import {Game} from "./simulation.js";
-import {Renderer} from "./render.js";
-import {media} from "./media.js";
-
 const canvas = document.querySelector("#canvas");
 const loading = document.querySelector("#loading");
 
@@ -27,6 +23,21 @@ function cutSprites(sheet) {
 }
 
 function makeSoundPlayer() {
+    if (location.protocol === "file:") {
+        const clips = new Map();
+        return {
+            enable() {},
+            play(type) {
+                const path = media.sounds[type];
+                if (!path) return;
+                if (!clips.has(path)) clips.set(path, new Audio(path));
+                const clip = clips.get(path);
+                clip.currentTime = 0;
+                clip.volume = 0.45;
+                clip.play().catch(() => {});
+            }
+        };
+    }
     let context;
     const sounds = new Map();
     const paths = Object.values(media.sounds);

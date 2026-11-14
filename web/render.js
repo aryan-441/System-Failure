@@ -92,7 +92,7 @@ function drawGameOver(ctx, game) {
     if (game.newRecord) label(ctx, `NEW HIGH SCORE! PREVIOUS: ${game.previousHighScore}`, 480, 425, 20, MINT, "center");
 }
 
-export class Renderer {
+class Renderer {
     constructor(canvas, assets) {
         this.canvas = canvas;
         this.ctx = canvas.getContext("2d", {alpha: false});

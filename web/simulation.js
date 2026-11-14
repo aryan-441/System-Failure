@@ -86,7 +86,7 @@ function separateEnemies(enemies) {
     }
 }
 
-export class Game {
+class Game {
     constructor() {
         this.highScore = readBest();
         this.restart();
