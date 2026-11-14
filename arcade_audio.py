@@ -5,16 +5,18 @@ import pygame
 class ArcadeAudio:
     """Loads optional sound effects; missing audio never blocks gameplay."""
 
+    
     SOUND_FILES = {
-        "shoot": "shoot.wav",
-        "hit": "hit.wav",
-        "enemy_down": "enemy_down.wav",
-        "player_hit": "player_hit.wav",
-        "game_over": "game_over.wav",
-        "overheat": "overheat.wav",
-        "ammo": "ammo.wav",
-        "warning": "warning.wav",
+        "shoot": "weapons/laser_small.ogg",
+        "hit": "warnings/player_damage_metal_impact.ogg",
+        "enemy_down": "explosions/explosion_crunch.ogg",
+        "player_hit": "warnings/player_damage_metal_impact.ogg",
+        "game_over": "interface/defeat.ogg",
+        "overheat": "warnings/system_force_field.ogg",
+        "ammo": "interface/recovery_shield_up.ogg",
+        "warning": "warnings/system_computer_noise.ogg"
     }
+
 
     def __init__(self):
         self.sounds = {}
