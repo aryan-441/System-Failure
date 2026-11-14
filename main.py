@@ -14,15 +14,55 @@ malfunction = 'NONE'
 bullets = []
 score = 0
 shot_timer = 0
+damage_timer = 0
 player = Player(WIDTH/2, HEIGHT/2)
-enemies =[Enemy(150,100)]
+enemies = [
+    Enemy(150, 150),
+    Enemy(800, 150),
+    Enemy(150, 400)
+]
+font = pygame.font.Font(None, 36)
+game_over_font = pygame.font.Font(None, 85)
+restart_font = pygame.font.Font(None, 32)
 
 while running:
     dt = clock.tick(FPS) / 1000  #change in time
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+
+        if event.type == pygame.KEYDOWN: #restarts
+            if event.key == pygame.K_r and player.health <= 0:
+                player = Player(WIDTH/2, HEIGHT/2)
+                enemies = [
+                    Enemy(150, 150),
+                    Enemy(800, 150),
+                    Enemy(150, 400)
+                ]
+                bullets = []
+                score = 0
+                shot_timer = 0
+                damage_timer = 0
+                malfunction = 'NONE'
     keys = pygame.key.get_pressed()
+
+    if not running:
+        break
+
+    if player.health <= 0:
+        screen.fill(BG_COLOUR)
+
+        title = game_over_font.render("SYSTEM FAILURE", True, (255, 65, 85))
+        score_display = font.render(f"FINAL SCORE: {score}", True, (255, 255, 255))
+        restart = restart_font.render("PRESS R TO RESTART", True, (120, 200, 255))
+
+        screen.blit(title, title.get_rect(center=(WIDTH/2, HEIGHT/2 - 70)))
+        screen.blit(score_display, score_display.get_rect(center=(WIDTH/2, HEIGHT/2 + 10)))
+        screen.blit(restart, restart.get_rect(center=(WIDTH/2, HEIGHT/2 + 70)))
+
+        pygame.display.flip()
+        continue
+
     player.update(dt, keys,malfunction)
 
     for enemy in enemies:
@@ -32,7 +72,7 @@ while running:
     mouse_pos = pygame.mouse.get_pos()
     mouse_buttons = pygame.mouse.get_pressed()
     shot_timer = max(0, shot_timer - dt) #decreases the timer and ensures that the value doesnt become negative
-    
+    damage_timer = max(0, damage_timer - dt)
 
     if mouse_buttons[0] and shot_timer <= 0: #if the user clicks and time is left
         direction = pygame.Vector2(mouse_pos) - player.position
@@ -62,6 +102,22 @@ while running:
                     score += 100
 
                 break
+    collision = False
+
+    for enemy in enemies:
+        if enemy.rect.colliderect(player.rect):
+            collision = True
+
+            if damage_timer <= 0 and player.health > 0:
+                player.health -= 1
+                damage_timer = 1
+            break
+
+    if collision:
+        pygame.display.set_caption("COLLISION DETECTED!")
+    else:
+        pygame.display.set_caption("SYSTEM FAILURE: Bounce Back")
+
     screen.fill(BG_COLOUR)
     player.draw(screen)
     for enemy in enemies:
@@ -76,5 +132,12 @@ while running:
     mouse_pos,
     2
 )'''
+
+    score_text = font.render(f"Score: {score}", True, (255, 255, 255))
+    health_text = font.render(f"Health: {player.health}", True, (255, 255, 255)) #render the font
+
+    screen.blit(score_text, (20, 20))
+    screen.blit(health_text, (20, 60))
+
     pygame.display.flip() #the flip method updates the display
 pygame.quit()
