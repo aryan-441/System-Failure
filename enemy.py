@@ -35,7 +35,7 @@ class Enemy:
     def draw(self, screen):
         pygame.draw.rect(screen, (255, 0, 0), self.rect)
 
-        if pygame.time.get_ticks() - self.last_hit < 120:
+        if pygame.time.get_ticks() - self.last_hit < 120: 
             pygame.draw.rect(screen, (255, 255, 255), self.rect, 4)  #enemy flashes white after being hit
 
         for i in range(3): #3 health bars
