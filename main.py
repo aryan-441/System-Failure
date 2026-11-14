@@ -267,7 +267,7 @@ while running:
     player.position.y = max(half, min(HEIGHT - half, player.position.y))
     player.rect.center = player.position
 
-    enemies_per_second = min(0.55, 0.24 + game_time * 0.00172)
+    enemies_per_second = min(0.65, 0.30 + game_time * 0.002)
     spawner.spawn_interval = 1 / enemies_per_second
 
     # AUTOMATIC ENEMY SPAWNING
