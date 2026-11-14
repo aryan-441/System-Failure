@@ -8,6 +8,19 @@ It is a 2D arcade game where the player controls a spaceship and has to defeat i
 
 As time progresses, the spaceship encounters a plethora of random malfunctions, including reversed system controls, overheating weapons, or a weakened shield. The player must adapt to these challenges and 'bounce back', trying to achieve the highest possible score.
 
+## How to play
+
+Download and extract the repository, then choose one of the two versions.
+
+**Python version:** Open a terminal in the project folder (the one containing `main.py`) and run:
+
+```sh
+python -m pip install pygame-ce
+python main.py
+```
+
+**Browser version:** Open the [browser version](browser%20version/) folder on your computer and double-click `index.html`. Click **Start** to play. Keep the files in this folder together. No Python installation is required.
+
 **FEATURES:**
 
 **1. Random Malfunctions:**
@@ -66,20 +79,6 @@ As time progresses, the spaceship encounters a plethora of random malfunctions, 
   
   (IX) Arcade sound effects for shooting, collisions, explosions, overheating, system warnings and game over.
 
-
-***How to Run***
-
-1. Install Python and Pygame.
-
-2. Clone or download this repository.
-
-3. Ensure the required game assets and Python modules are present.
-
-4. Run python main.py from the project directory.
-
-**Install Pygame using:**
-
-pip install pygame
 
 **Technologies Used**
 
