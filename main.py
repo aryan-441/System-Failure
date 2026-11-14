@@ -2,14 +2,13 @@
 '''HAVEN GAMEJAM'''
 import random
 import time
-import json
 import pygame
 from settings import WIDTH, HEIGHT, FPS, PLAYER_SPEED, ENEMY_SPEED, BULLET_SPEED, BG_COLOUR
 from player import Player
 from bullet import Bullet
 from enemy import Enemy
 from enemy_spawner import EnemySpawner
-from highscore import load_high_score, get_high_score
+from highscore import load_high_score, save_high_score
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 clock = pygame.time.Clock()
@@ -18,10 +17,13 @@ malfunction = 'NONE'
 bullets = []
 score = 0
 high_score = load_high_score()
+previous_high_score = high_score
+new_record = False
 shot_timer = 0
 damage_timer = 0
-ammo = 24
-ammo_per_kill = 5
+ammo = 18
+ammo_per_kill = 3
+max_ammo = 24
 empty_ammo_timer = 0
 player = Player(WIDTH/2, HEIGHT/2)
 enemies = [
@@ -53,10 +55,12 @@ while running:
                 ]
                 bullets = []
                 score = 0
+                previous_high_score = high_score
+                new_record = False
                 shot_timer = 0
                 damage_timer = 0
                 malfunction = 'NONE'
-                ammo = 24
+                ammo = 18
                 empty_ammo_timer = 0
 
                 # RESET SPAWNER
@@ -79,6 +83,11 @@ while running:
         screen.blit(score_display, score_display.get_rect(center=(WIDTH/2, HEIGHT/2 + 10)))
         screen.blit(restart, restart.get_rect(center=(WIDTH/2, HEIGHT/2 + 70)))
         screen.blit(high_score_display, high_score_display.get_rect(center=(WIDTH/2, HEIGHT/2 + 115)))
+
+        if new_record:
+            record_text = font.render(f"NEW HIGH SCORE! PREVIOUS: {previous_high_score}", True, (120, 255, 170))
+            screen.blit(record_text, record_text.get_rect(center=(WIDTH/2, HEIGHT/2 + 155)))
+
         pygame.display.flip()
         continue
 
@@ -142,9 +151,12 @@ while running:
                 if enemy.take_damage(1):
                     enemies.remove(enemy)
                     score += 100
-                    ammo += ammo_per_kill
-                    high_score = score
-                    get_high_score(high_score)
+                    ammo = min(max_ammo, ammo + ammo_per_kill)
+
+                    if score > high_score:
+                        new_record = True
+                        high_score = score
+                        save_high_score(high_score)
 
                 break
     collision = False
@@ -186,10 +198,15 @@ while running:
     screen.blit(score_text, (20, 20))
     screen.blit(health_text, (20, 60))
     screen.blit(ammo_text, (20, 100))
+    screen.blit(high_score_text, (20, 180))
 
     if ammo == 0:
         reload_text = font.render("OUT OF AMMO - EMERGENCY SUPPLY INCOMING", True, (255, 80, 80))
         screen.blit(reload_text, (20, 140))
+
+    if new_record:
+        record_text = font.render(f"NEW HIGH SCORE! PREVIOUS: {previous_high_score}", True, (120, 255, 170))
+        screen.blit(record_text, (20, 220))
 
     pygame.display.flip() #the flip method updates the display
 pygame.quit()
