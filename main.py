@@ -2,12 +2,14 @@
 '''HAVEN GAMEJAM'''
 import random
 import time
+import json
 import pygame
 from settings import WIDTH, HEIGHT, FPS, PLAYER_SPEED, ENEMY_SPEED, BULLET_SPEED, BG_COLOUR
 from player import Player
 from bullet import Bullet
 from enemy import Enemy
 from enemy_spawner import EnemySpawner
+from highscore import load_high_score, get_high_score
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 clock = pygame.time.Clock()
@@ -15,6 +17,7 @@ running = True
 malfunction = 'NONE'
 bullets = []
 score = 0
+high_score = load_high_score()
 shot_timer = 0
 damage_timer = 0
 ammo = 24
@@ -70,11 +73,12 @@ while running:
         title = game_over_font.render("SYSTEM FAILURE", True, (255, 65, 85))
         score_display = font.render(f"FINAL SCORE: {score}", True, (255, 255, 255))
         restart = restart_font.render("PRESS R TO RESTART", True, (120, 200, 255))
+        high_score_display = font.render(f"HIGH SCORE: {high_score}", True, (255, 220, 90))
 
         screen.blit(title, title.get_rect(center=(WIDTH/2, HEIGHT/2 - 70)))
         screen.blit(score_display, score_display.get_rect(center=(WIDTH/2, HEIGHT/2 + 10)))
         screen.blit(restart, restart.get_rect(center=(WIDTH/2, HEIGHT/2 + 70)))
-
+        screen.blit(high_score_display, high_score_display.get_rect(center=(WIDTH/2, HEIGHT/2 + 115)))
         pygame.display.flip()
         continue
 
@@ -139,6 +143,8 @@ while running:
                     enemies.remove(enemy)
                     score += 100
                     ammo += ammo_per_kill
+                    high_score = score
+                    get_high_score(high_score)
 
                 break
     collision = False
@@ -175,6 +181,7 @@ while running:
     score_text = font.render(f"Score: {score}", True, (255, 255, 255))
     health_text = font.render(f"Health: {player.health}", True, (255, 255, 255)) #render the font
     ammo_text = font.render(f"Ammo: {ammo}", True, (255, 220, 90))
+    high_score_text = font.render(f"High Score: {high_score}", True, (255, 220, 90))
 
     screen.blit(score_text, (20, 20))
     screen.blit(health_text, (20, 60))
