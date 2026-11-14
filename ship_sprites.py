@@ -1,0 +1,122 @@
+
+
+import random
+import math
+import pygame
+from pathlib import Path
+class ShipSprites:
+
+    def __init__(self):
+        folder = Path(__file__).parent / "assets" / "images"
+
+        enemy_folder = folder / "enemies"
+        player_folder = folder / "player"
+
+        self.enemy_images = []
+
+        enemy_names = [  #from the assets i found on opengameart
+            "enemy_black_5",
+            "enemy_blue_3",
+            "enemy_extension_ship_003",
+            "enemy_green_4",
+            "enemy_red_1"
+        ]
+
+        for name in enemy_names:
+            image = self.load_image(enemy_folder, name)
+
+            if image is not None:
+                self.enemy_images.append(image)
+
+        self.boss_image = self.load_image(enemy_folder, "boss_ship_large")
+        self.player_image = self.load_image(player_folder, "player_ship_blue")
+
+        self.boss_chance = 0.33   #33 percent boss chance
+
+        print("Enemy sprites loaded:", len(self.enemy_images))
+        print("Boss sprite loaded:", self.boss_image is not None)
+        print("Player sprite loaded:", self.player_image is not None)
+
+    def load_image(self, folder, name):
+        for extension in (".png", ".webp", ".jpg", ".jpeg"):
+            path = folder / (name + extension)
+
+            if path.exists():
+                try:
+                    return pygame.image.load(str(path)).convert_alpha()
+                except (pygame.error, OSError):
+                    print("Could not load:", path)
+
+        return None
+
+    def prepare_enemy(self, enemy, allow_boss=True):
+        enemy.is_boss = False
+        enemy.last_hit = -1000
+
+        if allow_boss and self.boss_image is not None and random.random() < self.boss_chance:  #random chance
+            enemy.is_boss = True
+            enemy.health = 5
+            enemy.ship_image = self.boss_image
+
+        else:
+            if len(self.enemy_images) > 0:
+                enemy.ship_image = random.choice(self.enemy_images)
+            else:
+                enemy.ship_image = None
+
+        enemy.max_health = enemy.health
+
+    def draw_enemy(self, screen, enemy):
+        image = enemy.ship_image
+
+        if image is None:
+            enemy.draw(screen)
+            return
+
+        scale = 1.5 if enemy.is_boss else 1
+
+        width = max(1, int(enemy.rect.width * scale))
+        height = max(1, int(enemy.rect.height * scale))
+
+        sprite = pygame.transform.smoothscale(image, (width, height))
+        sprite_rect = sprite.get_rect(center=enemy.rect.center)
+
+        if pygame.time.get_ticks() - enemy.last_hit < 120:
+            sprite = sprite.copy()
+            sprite.fill((255, 255, 255, 0), special_flags=pygame.BLEND_RGB_ADD)
+
+        screen.blit(sprite, sprite_rect)
+
+        bar_width = 12
+        gap = 3
+        total_width = enemy.max_health * bar_width + (enemy.max_health - 1) * gap
+
+        start_x = enemy.rect.centerx - total_width // 2
+
+        for i in range(enemy.max_health):
+            colour = (255, 70, 80) if i < enemy.health else (65, 65, 80)
+
+            pygame.draw.rect(
+                screen,
+                colour,
+                (start_x + i * (bar_width + gap), sprite_rect.top - 10, bar_width, 5)
+            )
+
+    def draw_player(self, screen, player, mouse_pos):
+        if self.player_image is None:
+            player.draw(screen)
+            return
+
+        image = pygame.transform.smoothscale(
+            self.player_image,
+            (player.rect.width, player.rect.height)
+        )
+
+        direction = pygame.Vector2(mouse_pos) - player.position
+
+        if direction.length_squared() > 0:
+            angle = math.degrees(math.atan2(-direction.y, direction.x)) - 90
+            image = pygame.transform.rotate(image, angle)
+
+        rect = image.get_rect(center=player.rect.center)
+        screen.blit(image, rect)
