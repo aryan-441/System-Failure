@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>System Failure: Bounce Back</title>
+  <link rel="icon" href="favicon.png">
+  <link rel="preload" href="ships.png" as="image">
+  <link rel="preload" href="space/0.webp" as="image">
+  <style>
+    * { box-sizing: border-box }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #080a19; color: #e1f4ff; }
+    body { display: grid; place-items: center; font: 16px/1.45 Arial, sans-serif; }
+    canvas { display: block; width: min(100vw, 177.77778vh); height: auto; aspect-ratio: 16/9; outline: none; touch-action: none; }
+    #loading { position: absolute; text-align: center; padding: .8rem 1.4rem; background: #0c1428; }
+    a { color: #a9dfe1; }
+  </style>
+  <link rel="modulepreload" href="simulation.js">
+  <link rel="modulepreload" href="render.js">
+  <link rel="modulepreload" href="media.js">
+  <script type="module" src="play.js"></script>
+</head>
+<body>
+  <canvas id="canvas" width="960" height="540" tabindex="0" aria-label="System Failure. Move with WASD or the arrow keys, aim with the mouse, hold the left button to fire, and press R after defeat."></canvas>
+  <div id="loading" role="status">Loading flight deckâ€¦</div>
+</body>
+</html>
