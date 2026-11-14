@@ -57,7 +57,7 @@ for enemy in enemies:
 
 # ENEMY SPAWNER
 spawner = EnemySpawner()
-boss_spawn_cooldown = 40
+boss_spawn_cooldown = 20
 last_boss_spawn = pygame.time.get_ticks()
 
 font = pygame.font.Font(None, 36)
