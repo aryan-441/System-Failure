@@ -31,7 +31,7 @@ class ShipSprites:
         self.boss_image = self.load_image(enemy_folder, "boss_ship_large")
         self.player_image = self.load_image(player_folder, "player_ship_blue")
 
-        self.boss_chance = 0.08   #8 percent boss chance
+        self.boss_chance = 0.05   #5 percent boss chance
 
         print("Enemy sprites loaded:", len(self.enemy_images))
         print("Boss sprite loaded:", self.boss_image is not None)
