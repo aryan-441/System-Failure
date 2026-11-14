@@ -72,7 +72,7 @@ for enemy in enemies:
 
 # ENEMY SPAWNER
 spawner = EnemySpawner()
-boss_spawn_cooldown = 20
+boss_spawn_cooldown = 40
 last_boss_spawn = 0
 max_enemies = 9
 
@@ -80,6 +80,19 @@ font = pygame.font.Font(None, 30)
 small_font = pygame.font.Font(None, 24)
 game_over_font = pygame.font.Font(None, 85)
 restart_font = pygame.font.Font(None, 32)
+
+error_explanations = {
+    'NONE': 'All systems operational',
+    'REVERSED': 'Movement controls are reversed',
+    'RECOIL': 'Firing pushes your ship backwards',
+    'DAMAGED_THRUSTERS': 'Movement speed is reduced',
+    'SHIELD_MALFUNCTION': 'Collisions deal double damage',
+    'WEAPON_OVERHEATING': 'Firing builds heat until the weapon jams',
+    'ENGINE_STALLING': 'Your engines periodically stop',
+    'TARGETING_GLITCH': 'Bullets may veer off target',
+    'ENGINE_DRIFT': 'Your ship drifts to the right',
+    'REACTOR_INSTABILITY': 'Random bursts push your ship off course'
+}
 
 while running:
     dt = min(clock.tick(FPS) / 1000, 0.05)  #change in time
@@ -162,6 +175,7 @@ while running:
 
     if game_time >= 15 and not first_failure_started and round_manager.current_malfunction != 'NONE':
         first_failure_started = True
+        round_manager.round_timer = 0
         malfunction = round_manager.current_malfunction
         effects.malfunction_changed(malfunction)
         audio.play("warning")
@@ -419,6 +433,11 @@ while running:
     screen.blit(round_text, (WIDTH - round_text.get_width() - 20, 60))
     screen.blit(malfunction_text, (WIDTH - malfunction_text.get_width() - 20, 100))
 
+    if game_time >= 15:
+        explanation = error_explanations.get(malfunction, 'Unknown system error')
+        explanation_text = small_font.render(explanation, True, (200, 210, 230))
+        screen.blit(explanation_text, (WIDTH - explanation_text.get_width() - 20, 130))
+
     if malfunction == 'WEAPON_OVERHEATING':
         heat_text = font.render(f"Weapon Heat: {int(weapon_heat)}%", True, (255, 100, 80))
         screen.blit(heat_text, (WIDTH - heat_text.get_width() - 20, 180))
@@ -433,7 +452,7 @@ while running:
 
     if new_record:
         record_text = font.render(f"NEW HIGH SCORE! PREVIOUS: {previous_high_score}", True, (120, 255, 170))
-        screen.blit(record_text, (WIDTH - record_text.get_width() - 20, 140))
+        screen.blit(record_text, (WIDTH - record_text.get_width() - 20, HEIGHT - 40))
 
     effects.draw_overlay(screen, WIDTH, HEIGHT)
     pygame.display.flip() #the flip method updates the display
