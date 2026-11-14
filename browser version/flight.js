@@ -222,7 +222,7 @@ class Game {
     fireWeapon(dt, input) {
         this.shotDelay = Math.max(0, this.shotDelay - dt);
         if (this.malfunction === "WEAPON_OVERHEATING") {
-            this.heat = Math.max(0, this.heat - 9 * dt);
+            this.heat = Math.max(0, this.heat - 5 * dt);
             if (this.heat <= 40) this.overheated = false;
         }
         if (this.ammo === 0 && this.bullets.length === 0) {
@@ -251,7 +251,7 @@ class Game {
             this.recoilY -= dy * 220;
         }
         if (this.malfunction === "WEAPON_OVERHEATING") {
-            this.heat = Math.min(100, this.heat + 5);
+            this.heat = Math.min(100, this.heat + 10);
             if (this.heat >= 100) {
                 this.overheated = true;
                 this.events.push({type: "overheat"});
@@ -268,7 +268,7 @@ class Game {
         this.events.push({type: "enemy_down", x, y, boss});
         this.enemies.splice(this.enemies.indexOf(enemy), 1);
         this.score += 100;
-        this.ammo = Math.min(24, this.ammo + 4);
+        this.ammo = Math.min(16, this.ammo + 4);
         if (this.score > this.highScore) {
             this.highScore = Math.max(this.score, readBest());
             this.newRecord = this.score === this.highScore;

@@ -45,12 +45,12 @@ async def main():
     game_over_sound_played = False
     ammo = 16
     ammo_per_kill = 4
-    max_ammo = 24
+    max_ammo = 16
     empty_ammo_timer = 0
     weapon_heat = 0
     max_weapon_heat = 100
-    heat_per_shot = 5
-    cooling_rate = 9
+    heat_per_shot = 10
+    cooling_rate = 5
     overheated = False
     stall_timer = 0
     stall_duration = 1.5
