@@ -1,6 +1,6 @@
 '''HAVEN GAMEJAM'''
 import random
-import time
+
 import pygame
 from settings import WIDTH, HEIGHT, FPS, PLAYER_SPEED, ENEMY_SPEED, BULLET_SPEED, BG_COLOUR
 from player import Player
@@ -43,12 +43,12 @@ first_failure_started = False
 game_over_sound_played = False
 ammo = 16
 ammo_per_kill = 4
-max_ammo = 24
+max_ammo = 16
 empty_ammo_timer = 0
 weapon_heat = 0
 max_weapon_heat = 100
-heat_per_shot = 5
-cooling_rate = 9
+heat_per_shot = 10
+cooling_rate = 5
 overheated = False
 stall_timer = 0
 stall_duration = 1.5
@@ -67,6 +67,8 @@ enemies = [
     Enemy(800, 150),
     Enemy(150, 400)
 ]
+pygame.mouse.set_visible(False)
+target_font = pygame.font.Font(None,22)
 for enemy in enemies:
     ship_sprites.prepare_enemy(enemy, allow_boss=False)
 
@@ -93,6 +95,36 @@ error_explanations = {
     'ENGINE_DRIFT': 'Your ship drifts to the right',
     'REACTOR_INSTABILITY': 'Random bursts push your ship off course'
 }
+def draw_crosshair(screen,enemies,font): #custom crosshair
+    mouse_pos = pygame.mouse.get_pos()
+    x,y = mouse_pos
+
+    target = None
+    for enemy in enemies:
+        if enemy.rect.collidepoint(mouse_pos):
+            target = enemy
+            break
+    colour = (255,80,90) if target else (100,220,255)
+
+    pygame.draw.circle(screen,colour,(x,y),2)
+    pygame.draw.line(screen, colour, (x - 15, y), (x - 6, y), 2)
+    pygame.draw.line(screen, colour, (x + 6, y), (x + 15, y), 2)
+    pygame.draw.line(screen, colour, (x, y - 15), (x, y - 6), 2)
+    pygame.draw.line(screen, colour, (x, y + 6), (x, y + 15), 2)
+    if target is not None:
+        enemy_type = getattr(target,'enemy_type','normal')
+        if getattr(target,'is_boss',False):
+            enemy_type = 'tank'
+        label = font.render(
+            enemy_type.upper() + ' | ' +str(target.health) + 'HP',
+            True,
+            (255,255,255)
+        )
+        label_rect = label.get_rect(
+            centerx = target.rect.centerx,
+            bottom=target.rect.top - 16
+        )
+        screen.blit(label,label_rect)
 
 while running:
     dt = min(clock.tick(FPS) / 1000, 0.05)  #change in time
@@ -455,5 +487,7 @@ while running:
         screen.blit(record_text, (WIDTH - record_text.get_width() - 20, HEIGHT - 40))
 
     effects.draw_overlay(screen, WIDTH, HEIGHT)
+    draw_crosshair(screen,enemies,target_font)
     pygame.display.flip() #the flip method updates the display
+pygame.mouse.set_visible(True)
 pygame.quit()
