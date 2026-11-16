@@ -90,6 +90,12 @@ class ShipSprites:
             sprite = sprite.copy()
             sprite.fill((255, 255, 255, 0), special_flags=pygame.BLEND_RGB_ADD)
 
+        if enemy.enemy_type == 'interceptor' and enemy.attack_state == 'lock':
+            start = enemy.rect.center
+            end = pygame.Vector2(start) + enemy.dash_direction * 150
+            pygame.draw.line(screen,(255,70,80),start,end,3)
+            pygame.draw.circle(screen,(255,100,100),start,25,2)
+
         screen.blit(sprite, sprite_rect)
 
         bar_width = 12
