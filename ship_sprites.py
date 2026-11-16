@@ -30,6 +30,7 @@ class ShipSprites:
 
         self.boss_image = self.load_image(enemy_folder, "boss_ship_large")
         self.player_image = self.load_image(player_folder, "player_ship_blue")
+        self.interceptor_image = self.load_image(enemy_folder,'enemy_extension_ship_003')
 
         self.boss_chance = 0.5   #50 percent boss chance
 
@@ -52,11 +53,15 @@ class ShipSprites:
     def prepare_enemy(self, enemy, allow_boss=True):
         enemy.is_boss = False
         enemy.last_hit = -1000
-
-        if allow_boss and self.boss_image is not None and random.random() < self.boss_chance:  #random chance
-            enemy.is_boss = True
-            enemy.health = 5
+        if enemy.enemy_type == 'interceptor':
+            enemy.ship_image = self.interceptor_image
+        elif allow_boss and self.boss_image is not None and random.random() < self.boss_chance:  #random chance
+            enemy.enemy_type = 'tank'
+            enemy.health = 6
             enemy.ship_image = self.boss_image
+            enemy.speed = 60
+            enemy.rect_size = (60,60)
+            enemy.rect_center = enemy.position
 
         else:
             if len(self.enemy_images) > 0:
@@ -73,7 +78,7 @@ class ShipSprites:
             enemy.draw(screen)
             return
 
-        scale = 1.5 if enemy.is_boss else 1
+        scale = 1
 
         width = max(1, int(enemy.rect.width * scale))
         height = max(1, int(enemy.rect.height * scale))
