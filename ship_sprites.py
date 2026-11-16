@@ -1,9 +1,10 @@
 
-
 import random
 import math
 import pygame
 from pathlib import Path
+
+
 class ShipSprites:
 
     def __init__(self):
@@ -12,30 +13,28 @@ class ShipSprites:
         enemy_folder = folder / "enemies"
         player_folder = folder / "player"
 
-        self.enemy_images = []
+        # ONE SPRITE FOR EACH ENEMY TYPE
+        self.normal_image = self.load_image(enemy_folder, "enemy_blue_3")
+        self.interceptor_image = self.load_image(enemy_folder, "enemy_black_5")
+        self.tank_image = self.load_image(enemy_folder / "new", "space_shooter_extension_ship_005_tank")
+        self.ranger_image = self.load_image(enemy_folder, "enemy_extension_ship_003")
+        self.bomber_image = self.load_image(enemy_folder / "new", "space_shooter_extension_ship_009_bomber")
 
-        enemy_names = [  #from the assets i found on opengameart
-            "enemy_black_5",
-            "enemy_blue_3",
-            "enemy_extension_ship_003",
-            "enemy_green_4",
-            "enemy_red_1"
+        self.player_image = self.load_image(player_folder, "player_ship_blue")
+
+        self.enemy_images = [
+            self.normal_image,
+            self.interceptor_image,
+            self.tank_image,
+            self.ranger_image,
+            self.bomber_image
         ]
 
-        for name in enemy_names:
-            image = self.load_image(enemy_folder, name)
+        self.boss_image = self.tank_image
+        self.boss_chance = 0.5   #50 percent tank chance
 
-            if image is not None:
-                self.enemy_images.append(image)
-
-        self.boss_image = self.load_image(enemy_folder, "boss_ship_large")
-        self.player_image = self.load_image(player_folder, "player_ship_blue")
-        self.interceptor_image = self.load_image(enemy_folder,'enemy_extension_ship_003')
-
-        self.boss_chance = 0.5   #50 percent boss chance
-
-        print("Enemy sprites loaded:", len(self.enemy_images))
-        print("Boss sprite loaded:", self.boss_image is not None)
+        print("Enemy sprites loaded:", sum(image is not None for image in self.enemy_images))
+        print("Tank sprite loaded:", self.tank_image is not None)
         print("Player sprite loaded:", self.player_image is not None)
 
     def load_image(self, folder, name):
@@ -53,21 +52,35 @@ class ShipSprites:
     def prepare_enemy(self, enemy, allow_boss=True):
         enemy.is_boss = False
         enemy.last_hit = -1000
+
         if enemy.enemy_type == 'interceptor':
             enemy.ship_image = self.interceptor_image
-        elif allow_boss and self.boss_image is not None and random.random() < self.boss_chance:  #random chance
-            enemy.enemy_type = 'tank'
+
+        elif enemy.enemy_type == 'ranger':
+            enemy.ship_image = self.ranger_image
+
+        elif enemy.enemy_type == 'bomber':
+            enemy.ship_image = self.bomber_image
+
+        elif enemy.enemy_type == 'tank':
+            enemy.is_boss = True
             enemy.health = 6
-            enemy.ship_image = self.boss_image
             enemy.speed = 60
-            enemy.rect_size = (60,60)
-            enemy.rect_center = enemy.position
+            enemy.rect.size = (60, 60)
+            enemy.rect.center = enemy.position
+            enemy.ship_image = self.tank_image
+
+        elif allow_boss and self.tank_image is not None and random.random() < self.boss_chance:
+            enemy.enemy_type = 'tank'
+            enemy.is_boss = True
+            enemy.health = 6
+            enemy.speed = 60
+            enemy.rect.size = (60, 60)
+            enemy.rect.center = enemy.position
+            enemy.ship_image = self.tank_image
 
         else:
-            if len(self.enemy_images) > 0:
-                enemy.ship_image = random.choice(self.enemy_images)
-            else:
-                enemy.ship_image = None
+            enemy.ship_image = self.normal_image
 
         enemy.max_health = enemy.health
 
@@ -89,12 +102,6 @@ class ShipSprites:
         if pygame.time.get_ticks() - enemy.last_hit < 120:
             sprite = sprite.copy()
             sprite.fill((255, 255, 255, 0), special_flags=pygame.BLEND_RGB_ADD)
-
-        if enemy.enemy_type == 'interceptor' and enemy.attack_state == 'lock':
-            start = enemy.rect.center
-            end = pygame.Vector2(start) + enemy.dash_direction * 150
-            pygame.draw.line(screen,(255,70,80),start,end,3)
-            pygame.draw.circle(screen,(255,100,100),start,25,2)
 
         screen.blit(sprite, sprite_rect)
 

@@ -58,9 +58,9 @@ class EnemySpawner:
             self.spawn_timer -= current_interval
 
             if malfunction_active:
-                weights = [75, 25, 0]
+                weights = [80, 20, 0]
             else:
-                weights = [48, 48, 4]
+                weights = [70, 20, 10]
 
             self.pending_spawns = random.choices(
                 [1, 2, 3],

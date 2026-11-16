@@ -496,4 +496,3 @@ while running:
     pygame.display.flip() #the flip method updates the display
 pygame.mouse.set_visible(True)
 pygame.quit()
-
