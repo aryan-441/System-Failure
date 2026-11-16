@@ -1,3 +1,4 @@
+
 import random
 from enemy import Enemy
 from settings import WIDTH, HEIGHT
@@ -23,10 +24,10 @@ def create_random_enemy():
         x = WIDTH - 20
         y = random.randint(20, HEIGHT - 20)
 
-    if random.random() < 0.33:
-        return Enemy(x,y,"interceptor")
-    return Enemy(x, y)
+    if random.random() < 0.4:
+        return Enemy(x, y, "interceptor")
 
+    return Enemy(x, y, "normal")
 
 
 class EnemySpawner:
@@ -37,7 +38,7 @@ class EnemySpawner:
         self.difficulty_timer = 0
         self.pending_spawns = 0
 
-    def update(self, dt):
+    def update(self, dt, malfunction_active=False):
         self.spawn_timer += dt
         self.difficulty_timer += dt
 
@@ -48,12 +49,22 @@ class EnemySpawner:
         if self.pending_spawns > 0:
             return True
 
-        if self.spawn_timer >= self.spawn_interval:
-            self.spawn_timer -= self.spawn_interval
+        current_interval = self.spawn_interval
+
+        if malfunction_active:
+            current_interval = self.spawn_interval * 1.6
+
+        if self.spawn_timer >= current_interval:
+            self.spawn_timer -= current_interval
+
+            if malfunction_active:
+                weights = [75, 25, 0]
+            else:
+                weights = [48, 48, 4]
 
             self.pending_spawns = random.choices(
                 [1, 2, 3],
-                weights=[48, 48, 4],
+                weights=weights,
                 k=1
             )[0]
 
@@ -66,4 +77,3 @@ class EnemySpawner:
             self.pending_spawns -= 1
 
         return create_random_enemy()
-
