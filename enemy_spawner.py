@@ -37,40 +37,25 @@ class EnemySpawner:
 
     def __init__(self):
         self.spawn_timer = 0
-        self.spawn_interval = 2.5
-        self.difficulty_timer = 0
         self.pending_spawns = 0
+
+        self.batch_size = random.choices(
+            [1, 2],
+            weights=[75, 25],
+            k=1
+        )[0]
+
+        self.spawn_interval = 1.0 if self.batch_size == 1 else 1.5
 
     def update(self, dt, malfunction_active=False):
         self.spawn_timer += dt
-        self.difficulty_timer += dt
-
-        if self.difficulty_timer >= 30:
-            self.difficulty_timer -= 30
-            self.spawn_interval = max(1.8, round(self.spawn_interval - 0.1, 2))
 
         if self.pending_spawns > 0:
             return True
 
-        current_interval = self.spawn_interval
-
-        if malfunction_active:
-            current_interval = self.spawn_interval * 1.6
-
-        if self.spawn_timer >= current_interval:
-            self.spawn_timer -= current_interval
-
-            if malfunction_active:
-                weights = [90, 10, 0]
-            else:
-                weights = [85, 15, 0]
-
-            self.pending_spawns = random.choices(
-                [1, 2, 3],
-                weights=weights,
-                k=1
-            )[0]
-
+        if self.spawn_timer >= self.spawn_interval:
+            self.spawn_timer -= self.spawn_interval
+            self.pending_spawns = self.batch_size
             return True
 
         return False
@@ -79,4 +64,15 @@ class EnemySpawner:
         if self.pending_spawns > 0:
             self.pending_spawns -= 1
 
-        return create_random_enemy()
+        enemy = create_random_enemy()
+
+        if self.pending_spawns == 0:
+            self.batch_size = random.choices(
+                [1, 2],
+                weights=[75, 25],
+                k=1
+            )[0]
+
+            self.spawn_interval = 1.0 if self.batch_size == 1 else 1.5
+
+        return enemy
