@@ -23,6 +23,8 @@ def create_random_enemy():
         x = WIDTH - 20
         y = random.randint(20, HEIGHT - 20)
 
+    if random.random() < 0.33:
+        return Enemy(x,y,"interceptor")
     return Enemy(x, y)
 
 class EnemySpawner:
