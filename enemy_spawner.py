@@ -24,8 +24,12 @@ def create_random_enemy():
         x = WIDTH - 20
         y = random.randint(20, HEIGHT - 20)
 
-    if random.random() < 0.4:
-        return Enemy(x, y, "interceptor")
+    enemy_type = random.choices(
+        ['normal','interceptor','ranger','bomber'],
+    weights=[50,20,20,10],
+    k=1
+    )[0]  #random.choies returns a list
+    return Enemy[x,y,enemy_type]
 
     return Enemy(x, y, "normal")
 
