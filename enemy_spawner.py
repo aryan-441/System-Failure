@@ -27,14 +27,21 @@ def create_random_enemy():
         return Enemy(x,y,"interceptor")
     return Enemy(x, y)
 
+
 class EnemySpawner:
 
     def __init__(self):
         self.spawn_timer = 0
-        self.spawn_interval = 2.5
+        self.spawn_interval = 1.5
+        self.difficulty_timer = 0
 
     def update(self, dt):
         self.spawn_timer += dt
+        self.difficulty_timer += dt
+
+        if self.difficulty_timer >= 30:
+            self.difficulty_timer = 0
+            self.spawn_interval = max(0.8, self.spawn_interval - 0.1)
 
         if self.spawn_timer >= self.spawn_interval:
             self.spawn_timer = 0
