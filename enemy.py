@@ -17,7 +17,7 @@ class Enemy:
         self.enemy_type = enemy_type
         self.attack_state = 'chase'
         self.attack_timer = 0
-        self.dash_direction - pygame.vector2(0,-1)
+        self.dash_direction = pygame.vector2(0,-1)
 
         if self.enemy_type == 'interceptor':
             self.speed = 220
