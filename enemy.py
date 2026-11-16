@@ -18,7 +18,7 @@ class Enemy:
         self.enemy_type = enemy_type
 
         if self.enemy_type == 'interceptor':
-            self.speed = 250
+            self.speed = 180
             self.health = 2
             self.rect.size = (32, 32)
 
