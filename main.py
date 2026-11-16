@@ -1,3 +1,4 @@
+
 '''HAVEN GAMEJAM'''
 import random
 
@@ -32,6 +33,7 @@ running = True
 round_manager = RoundManager()
 malfunction = 'NONE'
 bullets = []
+enemy_bullets = []
 score = 0
 high_score = load_high_score()
 previous_high_score = high_score
@@ -146,6 +148,7 @@ while running:
                 for enemy in enemies:
                     ship_sprites.prepare_enemy(enemy, allow_boss=False)
                 bullets = []
+                enemy_bullets = []
                 score = 0
                 previous_high_score = high_score
                 new_record = False
@@ -323,6 +326,20 @@ while running:
     for enemy in enemies:
         enemy.update(dt,player.position)
 
+        # RANGER SHOOTING
+        if enemy.enemy_type == 'ranger':
+            distance = enemy.position.distance_to(player.position)
+
+            if enemy.fire_timer <= 0 and distance <= 500:
+                direction = player.position - enemy.position
+
+                if direction.length_squared() > 0:
+                    new_bullet = Bullet(enemy.position, direction)
+                    new_bullet.speed = 280
+                    enemy_bullets.append(new_bullet)
+                    enemy.fire_timer = 2.2
+        
+
     separate_enemies(enemies, WIDTH, HEIGHT)
 
     #shooting logic
@@ -330,6 +347,27 @@ while running:
     mouse_buttons = pygame.mouse.get_pressed()
     shot_timer = max(0, shot_timer - dt) #decreases the timer and ensures that the value doesnt become negative
     damage_timer = max(0, damage_timer - dt)
+
+    # ENEMY PROJECTILES
+    for bullet in enemy_bullets[:]:
+        bullet.update(dt)
+
+        if bullet.is_off_screen():
+            enemy_bullets.remove(bullet)
+
+        elif bullet.rect.colliderect(player.rect):
+            enemy_bullets.remove(bullet)
+
+            if damage_timer <= 0 and player.health > 0:
+                damage = 1
+
+                if malfunction == 'SHIELD_MALFUNCTION':
+                    damage = 2
+
+                player.health = max(0, player.health - damage)
+                damage_timer = 1
+                effects.player_hit(player.position, damage)
+                audio.play("player_hit")
 
     if malfunction == 'WEAPON_OVERHEATING':
         weapon_heat = max(0, weapon_heat - cooling_rate * dt)
@@ -411,11 +449,27 @@ while running:
                 break
     collision = False
 
-    for enemy in enemies:
+    for enemy in enemies[:]:
         if enemy.rect.colliderect(player.rect):
             collision = True
 
-            if damage_timer <= 0 and player.health > 0:
+            if enemy.enemy_type == 'bomber':
+                effects.enemy_destroyed(enemy)
+                audio.play("enemy_down")
+                enemies.remove(enemy)
+
+                if damage_timer <= 0 and player.health > 0:
+                    damage = 2
+
+                    if malfunction == 'SHIELD_MALFUNCTION':
+                        damage = 4
+
+                    player.health = max(0, player.health - damage)
+                    damage_timer = 1
+                    effects.player_hit(player.position, damage)
+                    audio.play("player_hit")
+
+            elif damage_timer <= 0 and player.health > 0:
                 if malfunction == 'SHIELD_MALFUNCTION':
                     damage = 2
                 else:
@@ -440,6 +494,15 @@ while running:
 
     for bullet in bullets:
          bullet.draw(world_surface)
+
+    # RANGER LASERS
+    for bullet in enemy_bullets:
+        head = bullet.position
+        tail = bullet.position - bullet.direction * 18
+
+        pygame.draw.line(world_surface, (100, 15, 20), tail, head, 10)
+        pygame.draw.line(world_surface, (255, 50, 65), tail, head, 6)
+        pygame.draw.line(world_surface, (255, 215, 215), tail, head, 2)
 
     effects.draw(world_surface)
     screen.fill(BG_COLOUR)
