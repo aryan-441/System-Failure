@@ -299,21 +299,26 @@ while running:
     player.position.y = max(half, min(HEIGHT - half, player.position.y))
     player.rect.center = player.position
 
-    enemies_per_second = min(0.65, 0.30 + game_time * 0.002)
-    spawner.spawn_interval = 1 / enemies_per_second
+    #enemies_per_second = min(0.65, 0.30 + game_time * 0.002)
+    #spawner.spawn_interval = 1 / enemies_per_second
 
     # AUTOMATIC ENEMY SPAWNING
       
-    if len(enemies) < max_enemies and spawner.update(dt):
+   
+
+    if len(enemies) < max_enemies and spawner.update(dt, malfunction != 'NONE'):
         new_enemy = spawner.spawn()
+
         allow_boss = game_time >= 40 and game_time - last_boss_spawn >= boss_spawn_cooldown
         allow_boss = allow_boss and not any(enemy.is_boss for enemy in enemies)
+
         ship_sprites.prepare_enemy(new_enemy, allow_boss=allow_boss)
 
         if new_enemy.is_boss:
             last_boss_spawn = game_time
 
         enemies.append(new_enemy)
+
 
     for enemy in enemies:
         enemy.update(dt,player.position)
@@ -491,3 +496,4 @@ while running:
     pygame.display.flip() #the flip method updates the display
 pygame.mouse.set_visible(True)
 pygame.quit()
+
