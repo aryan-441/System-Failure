@@ -5,13 +5,18 @@ from pathlib import Path
 filepath = Path(__file__).parent / 'highscore.json'
 
 def load_high_score():
+    scores = {
+        'easy':0,
+        'medium':0,
+        'hard':0,
+    }
     try:
         with open(filepath, 'r') as f:
             data = json.load(f)
-            score = data.get('high_score',0)
-
+        for difficulty in scores:
+            score = data.get(difficulty, 0)
             if type(score) == int and score >= 0:
-                return score
+                scores[difficulty] = max(scores[difficulty],score)
     except (FileNotFoundError, OSError, ValueError, TypeError):
         pass
     return 0
