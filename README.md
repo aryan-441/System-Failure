@@ -38,13 +38,17 @@ As time progresses, the spaceship encounters a plethora of random malfunctions, 
   The game uses a dynamic enemy spawning system- enemies spawn at different edges of the map and move towards the player's spaceship. The spawn rate of enemies increases linearly as the game goes on. Each enemy can be defeated with 3 shots. A health bar reflects how many shots are required to defeat them. There is a 50% chance that a boss spawns, with a cap of 1 boss per 20 seconds. Unlike regular enemies, a boss has 5 health points. The maximum number of enemies at a given point of time is limited to 9.
    
 
-**5. Player Health**
+**5. Adaptive Boss System:**
+
+   A dedicated boss enters after 40 seconds. Its three health-driven phases are Analysis, Adaptation and Critical Failure. During the first phase it observes player movement and firing patterns. During the second phase it changes its movement strategy in response to those patterns. During the final phase it moves faster and changes to an evasive approach. The boss uses a separate large sprite, a dedicated health display, phase announcements and distinct audio cues. This is a rule-based adaptive system, not a machine-learning model.
+
+**6. Player Health**
 
    The player's spaceship begins with 5 health points. Whenever an enemy collides with the spaceship, the player loses one health point. A short cooldown prevents enemies from inflicting repeated damage every frame.
    However, during a Shield Malfunction, collisions inflict two points of damage instead. When damage occurs, visual effects indicate the impact, including red particles, screen shake and a floating damage indicator displaying the amount of health lost.
    Once the player's health reaches zero, the game ends.
 
-**6. Audio and Visual Effects:**
+**7. Audio and Visual Effects:**
 
    A plethora of audio-visual effects have been integrated with this project to create an immersive, arcade-type experience, including the following:
 
