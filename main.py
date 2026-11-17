@@ -105,18 +105,7 @@ def create_starting_enemies():
 
 
 def create_spawner():
-    new_spawner = EnemySpawner()
-
-    new_spawner.single_interval = difficulty['single_interval']
-    new_spawner.double_interval = difficulty['double_interval']
-
-    new_spawner.batch_size = random.choices(
-        [1, 2],
-        weights=difficulty['spawn_weights'],
-        k=1
-    )[0]
-
-    return new_spawner
+    return EnemySpawner(difficulty)
 
 
 round_manager = RoundManager()
@@ -441,35 +430,12 @@ while running:
 
     # AUTOMATIC ENEMY SPAWNING
 
-    if len(enemies) < max_enemies:
-        ready_to_spawn = spawner.update(dt, malfunction != 'NONE')
-
-        # Keep each difficulty's own minimum spawn intervals
-        spawner.single_interval = max(
-            difficulty['min_single_interval'],
-            spawner.single_interval
-        )
-        spawner.double_interval = max(
-            difficulty['min_double_interval'],
-            spawner.double_interval
-        )
-
-        if ready_to_spawn:
+    if len(enemies) < max_enemies and spawner.update(dt, malfunction != 'NONE'):
             new_enemy = spawner.spawn()
-
-            # Choose the next batch using the selected difficulty's weights
-            if spawner.pending_spawns == 0:
-                spawner.batch_size = random.choices(
-                    [1, 2],
-                    weights=difficulty['spawn_weights'],
-                    k=1
-                )[0]
-
             allow_boss = game_time >= 40 and game_time - last_boss_spawn >= boss_spawn_cooldown
-            allow_boss = allow_boss and not any(enemy.is_boss for enemy in enemies)
+            allow_boss = allow_boss and not any(enemy.is_boss for enemy in enemies) #efficient code
 
             ship_sprites.prepare_enemy(new_enemy, allow_boss=allow_boss)
-
             if new_enemy.is_boss:
                 last_boss_spawn = game_time
 
