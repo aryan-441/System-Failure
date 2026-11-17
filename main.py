@@ -7,7 +7,8 @@ from settings import WIDTH, HEIGHT, FPS, PLAYER_SPEED, ENEMY_SPEED, BULLET_SPEED
 from player import Player
 from bullet import Bullet
 from enemy import Enemy
-from enemy_spawner import EnemySpawner
+from enemy_spawner import EnemySpawner, create_random_enemy
+from boss_ai import BossAI
 from highscore import load_high_score, get_high_score
 from background import SpaceBackground
 from ship_sprites import ShipSprites
@@ -159,6 +160,8 @@ spawner = create_spawner()
 boss_spawn_cooldown = difficulty['tank_cooldown']
 last_boss_spawn = 0
 max_enemies = difficulty['max_enemies']
+boss_ai = BossAI()
+boss_warning_timer = 0.0
 
 font = pygame.font.Font(None, 30)
 small_font = pygame.font.Font(None, 24)
@@ -221,6 +224,7 @@ def draw_crosshair(screen,enemies,font): #custom crosshair
 while running:
     dt = min(clock.tick(FPS) / 1000, 0.05)  #change in time
     game_time += dt
+    boss_warning_timer = max(0.0, boss_warning_timer - dt)
     background.update(dt)  #bg updates after each line
     effects.update(dt)
 
@@ -280,6 +284,8 @@ while running:
                 # RESET SPAWNER
                 spawner = create_spawner()
                 last_boss_spawn = 0
+                boss_ai.reset()
+                boss_warning_timer = 0.0
                 effects.reset()
 
     keys = pygame.key.get_pressed()
@@ -428,21 +434,54 @@ while running:
     #enemies_per_second = min(0.65, 0.30 + game_time * 0.002)
     #spawner.spawn_interval = 1 / enemies_per_second
 
-    # AUTOMATIC ENEMY SPAWNING
+    # AUTOMATIC ENEMY AND ADAPTIVE BOSS SPAWNING
+    spawn_ready = spawner.update(dt, malfunction != 'NONE')
+    boss_exists = any(enemy.is_boss for enemy in enemies)
+    boss_cooldown_ready = (
+        last_boss_spawn == 0
+        or game_time - last_boss_spawn >= boss_spawn_cooldown
+    )
 
-    if len(enemies) < max_enemies and spawner.update(dt, malfunction != 'NONE'):
-            new_enemy = spawner.spawn()
-            allow_boss = game_time >= 40 and game_time - last_boss_spawn >= boss_spawn_cooldown
-            allow_boss = allow_boss and not any(enemy.is_boss for enemy in enemies) #efficient code
+    if game_time >= 40 and boss_cooldown_ready and not boss_exists:
+        boss = create_random_enemy()
+        boss.enemy_type = 'tank'
+        ship_sprites.prepare_enemy(boss, allow_boss=False)
+        boss.is_boss = True
+        boss.health = 12
+        boss.max_health = 12
+        boss.speed = 65
+        boss.rect.size = (64, 64)
+        boss.rect.center = boss.position
+        boss_ai.reset()
+        boss_warning_timer = 3.5
+        last_boss_spawn = game_time
+        enemies.append(boss)
+        audio.play('boss_spawn')
+        print('ADAPTIVE BOSS SPAWNED')
 
-            ship_sprites.prepare_enemy(new_enemy, allow_boss=allow_boss)
-            if new_enemy.is_boss:
-                last_boss_spawn = game_time
+    elif spawn_ready and len(enemies) < max_enemies:
+        new_enemy = spawner.spawn()
+        ship_sprites.prepare_enemy(new_enemy, allow_boss=False)
+        enemies.append(new_enemy)
 
-            enemies.append(new_enemy)
+    active_boss = next((enemy for enemy in enemies if enemy.is_boss), None)
+    if active_boss is not None:
+        phase_changed = boss_ai.record_player(
+            dt,
+            player.position,
+            pygame.mouse.get_pressed()[0],
+            active_boss.health,
+            active_boss.max_health
+        )
+        if phase_changed:
+            audio.play('boss_phase')
+            print('BOSS PHASE:', boss_ai.phase_name)
 
     for enemy in enemies:
-        enemy.update(dt,player.position)
+        if enemy.is_boss:
+            enemy.update(dt, player.position, boss_ai.strategy, boss_ai.phase)
+        else:
+            enemy.update(dt, player.position)
 
         # RANGER SHOOTING
         if enemy.enemy_type == 'ranger':
@@ -550,7 +589,9 @@ while running:
 
                 if enemy.take_damage(1):
                     effects.enemy_destroyed(enemy)
-                    audio.play("enemy_down")
+                    audio.play("boss_defeat" if enemy.is_boss else "enemy_down")
+                    if enemy.is_boss:
+                        print("ADAPTIVE BOSS DEFEATED")
                     enemies.remove(enemy)
                     score += 100
                     ammo = min(max_ammo, ammo + ammo_per_kill)
@@ -628,6 +669,31 @@ while running:
     effects.draw(world_surface)
     screen.fill(BG_COLOUR)
     screen.blit(world_surface, effects.camera_offset())
+
+    # Boss status display stays in screen space during camera shake.
+    active_boss = next((enemy for enemy in enemies if enemy.is_boss), None)
+    if active_boss is not None:
+        boss_label = font.render(
+            f"CORE INTEGRITY  {active_boss.health}/{active_boss.max_health}  |  PHASE {boss_ai.phase}: {boss_ai.phase_name}",
+            True,
+            (255, 115, 135)
+        )
+        screen.blit(boss_label, boss_label.get_rect(center=(WIDTH // 2, 24)))
+        bar_width = 360
+        bar_rect = pygame.Rect(WIDTH // 2 - bar_width // 2, 43, bar_width, 12)
+        pygame.draw.rect(screen, (55, 35, 50), bar_rect, border_radius=5)
+        fill_width = int(bar_width * max(0, active_boss.health) / active_boss.max_health)
+        if fill_width > 0:
+            pygame.draw.rect(
+                screen,
+                (245, 65, 95) if boss_ai.phase == 3 else (230, 105, 120),
+                (bar_rect.x, bar_rect.y, fill_width, bar_rect.height),
+                border_radius=5
+            )
+
+    if boss_warning_timer > 0:
+        warning_text = font.render('WARNING: ADAPTIVE CORE DETECTED', True, (255, 75, 100))
+        screen.blit(warning_text, warning_text.get_rect(center=(WIDTH // 2, 78)))
 
     '''pygame.draw.line(
     screen,
