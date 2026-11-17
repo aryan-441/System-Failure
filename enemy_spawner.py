@@ -26,7 +26,7 @@ def create_random_enemy():
 
     enemy_type = random.choices(
         ['normal', 'interceptor', 'ranger', 'bomber'],
-        weights=[50, 20, 20, 10],
+        weights=[58, 18, 16, 8], #optimised values
         k=1
     )[0]
 
@@ -40,12 +40,12 @@ class EnemySpawner:
         self.difficulty_timer = 0
         self.pending_spawns = 0
 
-        self.single_interval = 1.4
-        self.double_interval = 2.3
+        self.single_interval = 1.8
+        self.double_interval = 3.0
 
         self.batch_size = random.choices(
             [1, 2],
-            weights=[75, 25],
+            weights=[85, 15],
             k=1
         )[0]
 
@@ -57,11 +57,11 @@ class EnemySpawner:
             self.difficulty_timer -= 30
 
             self.single_interval = max(
-                1.1, round(self.single_interval - 0.1, 2)
+                1.4, round(self.single_interval - 0.05, 2)
             )
 
             self.double_interval = max(
-                1.9, round(self.double_interval - 0.1, 2)
+                2.4, round(self.double_interval - 0.05, 2)
             )
 
         if self.pending_spawns > 0:
@@ -91,7 +91,7 @@ class EnemySpawner:
         if self.pending_spawns == 0:
             self.batch_size = random.choices(
                 [1, 2],
-                weights=[75, 25],
+                weights=[85, 15],
                 k=1
             )[0]
 
