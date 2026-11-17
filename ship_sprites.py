@@ -17,6 +17,7 @@ class ShipSprites:
         self.normal_image = self.load_image(enemy_folder, "enemy_blue_3")
         self.interceptor_image = self.load_image(enemy_folder, "enemy_black_5")
         self.tank_image = self.load_image(enemy_folder / "new", "space_shooter_extension_ship_005_tank")
+        self.boss_image = self.load_image(enemy_folder, "boss_ship_large")
         self.ranger_image = self.load_image(enemy_folder, "enemy_extension_ship_003")
         self.bomber_image = self.load_image(enemy_folder / "new", "space_shooter_extension_ship_009_bomber")
 
@@ -30,8 +31,7 @@ class ShipSprites:
             self.bomber_image
         ]
 
-        self.boss_image = self.tank_image
-        self.boss_chance = 0.5   #50 percent tank chance
+        self.boss_chance = 0.5   # retained for compatibility with older settings
 
         print("Enemy sprites loaded:", sum(image is not None for image in self.enemy_images))
         print("Tank sprite loaded:", self.tank_image is not None)
@@ -68,7 +68,7 @@ class ShipSprites:
             enemy.speed = 60
             enemy.rect.size = (60, 60)
             enemy.rect.center = enemy.position
-            enemy.ship_image = self.tank_image
+            enemy.ship_image = self.boss_image or self.tank_image
 
         elif allow_boss and self.tank_image is not None and random.random() < self.boss_chance:
             enemy.enemy_type = 'tank'
@@ -91,7 +91,7 @@ class ShipSprites:
             enemy.draw(screen)
             return
 
-        scale = 1
+        scale = 1.08 if enemy.is_boss else 1
 
         width = max(1, int(enemy.rect.width * scale))
         height = max(1, int(enemy.rect.height * scale))
