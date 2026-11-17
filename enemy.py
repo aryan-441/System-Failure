@@ -1,7 +1,7 @@
 
 import pygame
 
-
+from settings import WIDTH, HEIGHT
 class Enemy:
     def __init__(self, x, y, enemy_type='normal'):
         self.position = pygame.Vector2(x, y)
@@ -56,6 +56,8 @@ class Enemy:
 
         if self.enemy_type == 'ranger':
             self.fire_timer -= dt
+            self.position.x = max(20,min(WIDTH-20,self.position.x))
+            self.position.y=max(20,min(HEIGHT-20,self.position.y))
 
         self.rect.center = self.position
 
