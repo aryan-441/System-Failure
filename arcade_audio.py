@@ -14,7 +14,10 @@ class ArcadeAudio:
         "game_over": "interface/defeat.ogg",
         "overheat": "warnings/system_force_field.ogg",
         "ammo": "interface/recovery_shield_up.ogg",
-        "warning": "warnings/system_computer_noise.ogg"
+        "warning": "warnings/system_computer_noise.ogg",
+        "boss_spawn": "explosions/explosion_low_frequency.ogg",
+        "boss_phase": "warnings/system_computer_noise.ogg",
+        "boss_defeat": "interface/victory_or_confirm.ogg"
     }
 
 
