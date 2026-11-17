@@ -50,10 +50,10 @@ empty_ammo_timer = 0
 weapon_heat = 0
 max_weapon_heat = 100
 heat_per_shot = 10
-cooling_rate = 5
+cooling_rate = 10
 overheated = False
 stall_timer = 0
-stall_duration = 1.5
+stall_duration = 1
 stall_interval = 5
 is_stalled = False
 drift_direction = pygame.Vector2(1, 0)
@@ -78,7 +78,7 @@ for enemy in enemies:
 spawner = EnemySpawner()
 boss_spawn_cooldown = 40
 last_boss_spawn = 0
-max_enemies = 9
+max_enemies = 8
 
 font = pygame.font.Font(None, 30)
 small_font = pygame.font.Font(None, 24)
@@ -278,7 +278,7 @@ while running:
         reactor_duration = 0.5
 
     if malfunction == 'DAMAGED_THRUSTERS':
-        player.speed = PLAYER_SPEED * 0.5
+        player.speed = PLAYER_SPEED * 0.65
     else:
         player.speed = PLAYER_SPEED
 
@@ -335,9 +335,9 @@ while running:
 
                 if direction.length_squared() > 0:
                     new_bullet = Bullet(enemy.position, direction)
-                    new_bullet.speed = 280
+                    new_bullet.speed = 250
                     enemy_bullets.append(new_bullet)
-                    enemy.fire_timer = 2.2
+                    enemy.fire_timer = 2.5
         
 
     separate_enemies(enemies, WIDTH, HEIGHT)
@@ -462,7 +462,7 @@ while running:
                     damage = 2
 
                     if malfunction == 'SHIELD_MALFUNCTION':
-                        damage = 4
+                        damage = 3
 
                     player.health = max(0, player.health - damage)
                     damage_timer = 1
