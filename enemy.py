@@ -18,7 +18,7 @@ class Enemy:
         self.enemy_type = enemy_type
 
         if self.enemy_type == 'interceptor':
-            self.speed = 180
+            self.speed = 170
             self.health = 2
             self.rect.size = (32, 32)
 
@@ -29,7 +29,7 @@ class Enemy:
             self.fire_timer = 1.5
 
         elif self.enemy_type == 'bomber':
-            self.speed = 190
+            self.speed = 155
             self.health = 1
             self.rect.size = (30, 30)
 
