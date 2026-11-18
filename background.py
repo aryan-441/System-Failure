@@ -39,7 +39,7 @@ class SpaceBackground:
             for file in files:
                 try:
                     image = pygame.image.load(str(file)).convert()
-                    self.images.append(image)
+                    self.images.append(image) #so that we dont need to load images every time
                 except pygame.error:
                     print("Could not load:", file.name)
 
@@ -82,7 +82,7 @@ class SpaceBackground:
             for y in range(-image_height + offset, self.height, image_height):
                 screen.blit(image, (x, y))
 
-    def draw(self, screen):
+    def draw(self, screen):  #we use the set alpha method to adjust transparency dynamically to create a fade effect
         screen.fill((8, 10, 25))
 
         if len(self.images) > 0:

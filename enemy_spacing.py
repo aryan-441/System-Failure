@@ -2,7 +2,7 @@ import pygame
 
 
 def separate_enemies(enemies, width, height):
-    """Push overlapping enemies apart and keep them inside the play area."""
+    #Push overlapping enemies apart and keep them inside the play area.
     for index, enemy_a in enumerate(enemies):
         for enemy_b in enemies[index + 1:]:
             difference = enemy_b.position - enemy_a.position

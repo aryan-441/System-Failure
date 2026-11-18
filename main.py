@@ -433,7 +433,15 @@ while running:
     if len(enemies) < max_enemies and spawner.update(dt, malfunction != 'NONE'):
             new_enemy = spawner.spawn()
             allow_boss = game_time >= 40 and game_time - last_boss_spawn >= boss_spawn_cooldown
-            allow_boss = allow_boss and not any(enemy.is_boss for enemy in enemies) #efficient code
+            '''tank_alive = False
+            for enemy in enemies:
+                if enemy.is_boss:
+                    tank_alive = True
+                    break
+            if tank_alive:
+                allow_boss = False'''
+            allow_boss = allow_boss and not any(enemy.is_boss for enemy in enemies) #generator attribute
+
 
             ship_sprites.prepare_enemy(new_enemy, allow_boss=allow_boss)
             if new_enemy.is_boss:

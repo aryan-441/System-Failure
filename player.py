@@ -51,4 +51,3 @@ class Player:
     def apply_recoil(self, direction):
         if direction.length_squared() > 0:
             self.recoil_velocity -= direction.normalize() * RECOIL_IMPULSE
-
