@@ -21,7 +21,7 @@ class ArcadeEffects:
         self.smoke_timer = 0.0
         self.white_masks = {}
 
-    def make_particle(self, position, velocity, colour, life, radius, gravity=0):
+    def make_particle(self, position, velocity, colour, life, radius, gravity=0, image=None):
         self.particles.append({
             "position": pygame.Vector2(position),
             "velocity": pygame.Vector2(velocity),
@@ -30,6 +30,7 @@ class ArcadeEffects:
             "maximum_life": life,
             "radius": radius,
             "gravity": gravity,
+            "image": image,
         })
 
     def sparks(self, position, count, colour):
@@ -102,19 +103,22 @@ class ArcadeEffects:
         self.hit_overlay_timer = max(0.0, self.hit_overlay_timer - dt)
         self.shake = max(0.0, self.shake - 28 * dt)
 
-        for particle in self.particles[:]:
-            particle["life"] -= dt
-            if particle["life"] <= 0:
+        for particle in self.particles:
+
+            particle['life'] -= dt
+            if particle['life'] <= 0:
                 self.particles.remove(particle)
                 continue
-            particle["velocity"].y += particle["gravity"] * dt
-            particle["position"] += particle["velocity"] * dt
+
+            particle['velocity'].y += particle['gravity'] * dt
+            particle['position'] += particle['velocity'] * dt
+
+            
 
         for label in self.floating_text[:]:
             label["life"] -= dt
             label["position"].y -= 60 * dt
-            if label["life"] <= 0:
-                self.floating_text.remove(label)
+            
 
     def camera_offset(self):
         amount = int(self.shake)
@@ -139,7 +143,7 @@ class ArcadeEffects:
             if mask_image is None:
                 scaled = pygame.transform.smoothscale(image, size)
                 mask = pygame.mask.from_surface(scaled)
-                mask_image = pygame.Surface(size, pygame.SRCALPHA)
+                mask_image = pygame.Surface(size, pygame.SRCALPHA) #for supporting transparency
                 mask.to_surface(
                     surface=mask_image,
                     setcolor=(255, 255, 255, 255),
@@ -156,14 +160,20 @@ class ArcadeEffects:
 
         for particle in self.particles:
             fraction = max(0.0, particle["life"] / particle["maximum_life"])
-            alpha = int(220 * fraction)
-            radius = max(1, int(particle["radius"] * (1.5 - fraction * 0.5)))
+            alpha = int(220 * fraction) #220 as the visual choice for transparency
+            radius = max(1, int(particle["radius"] * (1.5 - fraction * 0.5))) #math to make the particle size bigger as its transparency increases
             colour = (*particle["colour"], alpha)
-            pygame.draw.circle(
-                layer, colour,
-                (int(particle["position"].x), int(particle["position"].y)),
-                radius,
-            )
+            if particle['image'] is not None:
+                sprite = particle['image']
+                sprite.set_alpha(alpha)
+                rect = sprite.get_rect(center=particle['position'])
+                layer.blit(sprite,rect)
+            else:
+                pygame.draw.circle(
+                    layer, colour,
+                    (int(particle["position"].x), int(particle["position"].y)),
+                    radius,
+                )
 
         for label in self.floating_text:
             fraction = max(0.0, label["life"] / label["maximum_life"])
