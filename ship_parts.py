@@ -39,7 +39,9 @@ class ModularShip:
         self.parts = []
         self.state = "intact"
         self.animation_timer = 0
+        self.angle = 0
 
+        self.hull_surface = pygame.Surface(image.get_size(), pygame.SRCALPHA)
         width, height = image.get_size()
         left_edge = width * 35 // 99
         right_edge = width * 64 // 99
@@ -88,7 +90,7 @@ class ModularShip:
         for part, direction, spin in zip(
             self.parts[1:], directions, spins
         ):
-            part.velocity = direction.normalize() * 170
+            part.velocity = direction.normalize().rotate(-self.angle) * 170
             part.rotation_speed = spin
             part.attached = False
             part.returning = False
@@ -113,13 +115,21 @@ class ModularShip:
                     part.returning = True
 
 
+    def part_target(self, part):
+        return self.centre + part.offset.rotate(-self.angle)
+
+    def return_angle(self, part, progress):
+        turn = (self.angle - part.start_angle + 180) % 360 - 180
+        return part.start_angle + turn * progress
+
     def update(self, dt):
-        self.parts[0].position = self.centre + self.parts[0].offset
+        self.parts[0].position = self.part_target(self.parts[0])
+        self.parts[0].angle = self.angle
         if self.state == "broken":
             for part in self.parts[1:]:
                 if part.attached:
-                    part.position = self.centre + part.offset
-                    part.angle = 0
+                    part.position = self.part_target(part)
+                    part.angle = self.angle
                 elif part.returning:
                 # Individual recovery animation
                     part.return_timer += dt
@@ -130,19 +140,19 @@ class ModularShip:
 
                     eased = 1 - (1 - progress) ** 3
 
-                    target = self.centre + part.offset
+                    target = self.part_target(part)
 
                     part.position = part.start_position.lerp(
                         target, eased
                     )
 
-                    part.angle = part.start_angle * (1 - eased)
+                    part.angle = self.return_angle(part, eased)
 
                     if progress >= 1:
                         part.attached = True
                         part.returning = False
                         part.position = target
-                        part.angle = 0
+                        part.angle = self.angle
                         part.velocity = pygame.Vector2(0, 0)
                         part.rotation_speed = 0
 
@@ -164,9 +174,9 @@ class ModularShip:
             eased = 1 - (1 - progress) ** 3
 
             for part in self.parts[1:]:
-                target = self.centre + part.offset
+                target = self.part_target(part)
                 part.position = part.start_position.lerp(target, eased)
-                part.angle = part.start_angle * (1 - eased)
+                part.angle = self.return_angle(part, eased)
 
             if progress >= 1:
                 for part in self.parts[1:]:
@@ -177,12 +187,50 @@ class ModularShip:
 
         elif self.state == "intact":
             for part in self.parts[1:]:
-                part.position = self.centre + part.offset
-                part.angle = 0
+                part.position = self.part_target(part)
+                part.angle = self.angle
             
     def draw(self, screen):
+        if self.angle == 0:
+            for part in self.parts:
+                part.draw(screen)
+            return
+
+        self.hull_surface.fill((0, 0, 0, 0))
+        surface_centre = pygame.Vector2(self.hull_surface.get_size()) / 2
         for part in self.parts:
-            part.draw(screen)
+            if part.attached and self.state != "reassembling":
+                local_rect = part.image.get_rect(center=surface_centre + part.offset)
+                self.hull_surface.blit(part.image, local_rect)
+            else:
+                part.draw(screen)
+
+        hull = pygame.transform.rotate(self.hull_surface, self.angle)
+        screen.blit(hull, hull.get_rect(center=self.centre))
+
+
+def load_explosion_frames():
+    explosion_path = (
+        Path(__file__).parent / 'assets' / 'images' / 'effects' / 'animated_explosions' / 'explosion-3.png'
+
+    )
+    explosion_sheet = pygame.image.load(str(explosion_path)).convert_alpha()
+    frame_size = explosion_sheet.get_height() #works cuz frames are square
+    frame_count = explosion_sheet.get_width() // frame_size
+
+    explosion_frames = []
+    for i in range(frame_count):
+        frame_rect = pygame.Rect(
+            i * frame_size,
+            0,
+            frame_size,
+            frame_size,
+        )
+        frame = explosion_sheet.subsurface(frame_rect).copy()
+        frame = pygame.transform.scale(frame,(80,80))
+
+        explosion_frames.append(frame)
+    return explosion_frames
 
 
 #TEST
@@ -242,26 +290,7 @@ if __name__ == '__main__':
             )
 
 
-    explosion_path = (
-        Path(__file__).parent / 'assets' / 'images' / 'effects' / 'animated_explosions' / 'explosion-3.png'
-
-    )
-    explosion_sheet = pygame.image.load(str(explosion_path)).convert_alpha()
-    frame_size = explosion_sheet.get_height() #works cuz frames are square
-    frame_count = explosion_sheet.get_width() // frame_size
-
-    explosion_frames = []
-    for i in range(frame_count):
-        frame_rect = pygame.Rect(
-            i * frame_size,
-            0,
-            frame_size,
-            frame_size,
-        )
-        frame = explosion_sheet.subsurface(frame_rect).copy()
-        frame = pygame.transform.scale(frame,(80,80))
-
-        explosion_frames.append(frame)
+    explosion_frames = load_explosion_frames()
     explosion_age = None
     explosion_frame_time = 0.048
 
@@ -399,3 +428,4 @@ if __name__ == '__main__':
         pygame.display.flip()
 
     pygame.quit()
+    
