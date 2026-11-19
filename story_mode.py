@@ -3,6 +3,8 @@ from enum import Enum, auto #cool library for game states
 
 import pygame
 
+from boss_ai import BossAI
+from story_visuals import StoryHUD, scatter_wreckage, draw_shield
 from enemy import Enemy
 from settings import WIDTH, HEIGHT
 from ship_parts import ModularShip, load_explosion_frames
@@ -17,7 +19,7 @@ class StoryPhase(Enum):
 class RecoveryStep(Enum):
     OBJECTIVE = auto()
     PICKUP = auto()
-    RETURNNG = auto()
+    RETURNING = auto()
 
 class StoryMode:
     opening_duration = 18.0
@@ -29,12 +31,23 @@ class StoryMode:
     def __init__(self, player, ship_sprites):
         self.phase = StoryPhase.OPENING
         self.phase_time = 0.0
-        self.tank_shot_timer = 1.0
-        self.tank = Enemy(WIDTH - 160, HEIGHT // 2, 'tank')
-        ship_sprites.prepare_enemy(self.tank)
+        self.boss_ai = BossAI()
+        self.boss = Enemy(WIDTH - 75, 110, 'adaptive core')
+        self.boss.ship_image = ship_sprites.adaptive_image
+        self.boss.is_boss = True
+        self.boss.health = self.boss.max_health = 9
+        self.boss.speed = 175
+        self.boss.rect.size = (64, 64)
+        self.boss.rect.center = self.boss.position
+        self.shot_timer = 0.65
+        self.shield_flash = 0.0
+        self.shielded = False
+        self.wreckage = []
+        self.hud = StoryHUD()
         image = ship_sprites.player_image
         size = (80, round(80 * image.get_height() / image.get_width()))
         self.ship = ModularShip(pygame.transform.scale(image, size), player.position)
+        self.debris_source = pygame.transform.scale(image, size)
         self.explosion_frames = load_explosion_frames()
         player.rect.size = self.assembled_hitbox
         player.rect.center = player.position
@@ -87,28 +100,73 @@ class StoryMode:
 
     def advance(self, dt, effects, audio):
         self.phase_time += dt
-        if self.phase == StoryPhase.OPENING and self.phase_time >= self.opening_duration:
-            self.phase = StoryPhase.SCRIPTED_DEFEAT
-            self.phase_time = 0.0
-            self.ship.explode()
-            effects.sparks(self.ship.centre, 32, (255, 170, 70))
-            effects.shake = 12
-            effects.hit_overlay_timer = 0.28
-            audio.play('enemy_down')
-            return True
-
+        self.shield_flash = max(0, self.shield_flash - dt)
+        for fragment in self.wreckage:
+            fragment.update(dt)
         if self.phase == StoryPhase.SCRIPTED_DEFEAT and self.phase_time >= self.defeat_duration:
             self.phase = StoryPhase.RECOVERY
             self.phase_time = 0.0
-        return False
 
-    def tank_ready_to_fire(self, enemy, dt):
-        if enemy is not self.tank:
+    def opening_enemies(self, sprites):
+        enemies = [self.boss]
+        for x, y in [(WIDTH - 70, HEIGHT - 70), (90, 85)]:
+            minion = Enemy(x, y, 'interceptor')
+            sprites.prepare_enemy(minion, allow_boss=False)
+            enemies.append(minion)
+        return enemies
+
+    def update_boss(self, dt, player, firing, audio):
+        changed = self.boss_ai.record_player(dt, player.position, firing, self.boss.health, self.boss.max_health)
+        if changed:
+            audio.play('warning')
+        self.boss.update(dt, player.position, self.boss_ai.strategy, self.boss_ai.phase)
+        arena = pygame.Rect(0, 0, WIDTH, HEIGHT)
+        if not arena.contains(self.boss.rect):
+            self.boss.rect.clamp_ip(arena)
+            self.boss.position.update(self.boss.rect.center)
+        self.shot_timer -= dt
+
+    def aim_boss_shot(self, player):
+        offset = player.position - self.boss.position
+        history = self.boss_ai.history
+        if len(history) >= 2:
+            velocity = (history[-1]['position'] - history[-2]['position']) / self.boss_ai.sample_interval
+            offset += velocity * min(0.55, offset.length() / 320)
+        self.shot_timer = 0.95
+        return offset
+
+    def hit_boss(self, impact, effects, audio):
+        if self.shielded:
+            self.shield_flash = 0.22
+            effects.sparks(impact, 9, (140, 235, 255))
+        else:
+            self.boss.take_damage(1)
+            effects.hit_enemy(self.boss)
+            if self.boss.health <= self.boss.max_health - 3:
+                self.shielded = True
+                self.shield_flash = 0.35
+                audio.play('warning')
+
+    def finish_opening(self, player, enemies, bullets, enemy_bullets, effects, audio):
+        if self.phase != StoryPhase.OPENING:
             return False
-        self.tank_shot_timer -= dt
-        if self.tank_shot_timer > 0:
+        if self.phase_time < self.opening_duration and not self.boss.rect.colliderect(player.rect):
             return False
-        self.tank_shot_timer += 1.5
+        self.phase = StoryPhase.SCRIPTED_DEFEAT
+        self.phase_time = 0.0
+        self.ship.centre.update(player.position)
+        self.ship.update(0)
+        self.ship.explode()
+        self.wreckage = scatter_wreckage(self.debris_source, player.position, self.ship.angle)
+        effects.sparks(player.position, 32, (255, 170, 70))
+        effects.shake = 12
+        effects.hit_overlay_timer = 0.28
+        audio.play('enemy_down')
+        enemies.clear()
+        bullets.clear()
+        enemy_bullets.clear()
+        player.rect.size = self.cockpit_hitbox
+        player.rect.center = player.position
         return True
 
     def recover_part(self, key):
@@ -130,7 +188,21 @@ class StoryMode:
             effects.sparks(self.ship.centre, 16, (95, 210, 255))
             effects.shake = max(effects.shake, 5)
 
+    def draw_boss_shield(self, surface):
+        draw_shield(surface, self.boss.rect.center, self.phase_time, self.shield_flash)
+
     def draw_ship(self, surface):
+        for fragment in self.wreckage:
+            fragment.draw(surface)
+        if self.phase == StoryPhase.RECOVERY:
+            objective = self.objectives[self.objective_index]
+            target = None
+            if self.recovery_step == RecoveryStep.PICKUP:
+                target = self.ship.parts[self.objective_index + 1].position
+            elif self.recovery_step == RecoveryStep.OBJECTIVE and objective['type'] == 'reach':
+                target = objective['target']
+            if target is not None:
+                pygame.draw.circle(surface, (115, 235, 215), target, 18, 2)
         self.ship.draw(surface)
         if self.phase == StoryPhase.SCRIPTED_DEFEAT:
             frame = int(self.phase_time / self.explosion_frame_time)
@@ -138,21 +210,8 @@ class StoryMode:
                 image = self.explosion_frames[frame]
                 surface.blit(image, image.get_rect(center=self.ship.centre))
 
-    def draw_hud(self, screen, font, player, ammo):
-        if self.phase == StoryPhase.OPENING:
-            message = 'Hold off the tank'
-        elif self.phase == StoryPhase.SCRIPTED_DEFEAT:
-            message = 'SYSTEM FAILURE'
-        elif self.phase == StoryPhase.RECOVERY:
-            recovered = sum(part.attached for part in self.ship.parts[1:])
-            message = f'Press 1–6 to recover ship components  ({recovered}/6)'
-        else:
-            message = 'Ship reassembled'
-
-        title = font.render(message, True, (210, 235, 255))
-        screen.blit(title, title.get_rect(midtop=(WIDTH // 2, 20)))
-        status = font.render(f'Health: {player.health}    Ammo: {ammo}', True, (255, 220, 90))
-        screen.blit(status, (20, 20))
+    def draw_hud(self, screen, player, ammo, health_limit, ammo_limit, debuff, description):
+        self.hud.draw(screen, self, player.health, ammo, health_limit, ammo_limit, debuff, description)
 
     def update_objective(self, dt, player):
         if self.phase != StoryPhase.RECOVERY:
@@ -179,7 +238,7 @@ class StoryMode:
     def record_kill(self,enemy):
         if self.phase != StoryPhase.RECOVERY:
             return
-        if self.phase != RecoveryStep.OBJECTIVE:
+        if self.recovery_step != RecoveryStep.OBJECTIVE:
             return
         if self.objective_index >= len(self.objectives):
             return
@@ -196,7 +255,7 @@ class StoryMode:
         if self.phase != StoryPhase.RECOVERY:
             return
         part_id = self.objective_index + 1 #bcuz we arent collecting the cockpit
-        part = self.ship_parts[part_id]
+        part = self.ship.parts[part_id]
         if self.recovery_step == RecoveryStep.PICKUP:
             part.velocity = pygame.Vector2(0,0)
             part.rotation_speed = 0
@@ -209,14 +268,14 @@ class StoryMode:
             distance = player.position.distance_to(part.position)
             if distance <= 40:
                 self.ship.recover_part(part_id)
-                self.recovery_step(RecoveryStep.RETURNING)
-            elif self.recovery_step == RecoveryStep.RETURNING:
-                if part.attached:
-                    if self.objective_index < len(self.objectives) - 1:
-                        self.objective_index += 1
-                        self.objective_progress = 0
-                        self.objective_timer = 0.0
-                        self.recovery_step = RecoveryStep.OBJECTIVE
+                self.recovery_step = RecoveryStep.RETURNING
+        elif self.recovery_step == RecoveryStep.RETURNING:
+            if part.attached:
+                if self.objective_index < len(self.objectives) - 1:
+                    self.objective_index += 1
+                    self.objective_progress = 0
+                    self.objective_timer = 0.0
+                    self.recovery_step = RecoveryStep.OBJECTIVE
 
     def spawn_recovery_enemies(self, enemies, ship_sprites, player):
         if self.phase != StoryPhase.RECOVERY:
