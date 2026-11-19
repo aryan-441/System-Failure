@@ -157,7 +157,7 @@ player = Player(WIDTH/2, HEIGHT/2)
 player.health = difficulty['player_health']
 
 story = StoryMode(player, ship_sprites) if story_selected else None
-enemies = [story.tank] if story else create_starting_enemies()
+enemies = story.opening_enemies(ship_sprites) if story else create_starting_enemies()
 minimum_health = 1 if story else 0
 
 pygame.mouse.set_visible(False)
@@ -215,7 +215,7 @@ def draw_crosshair(screen,enemies,font, camera_offset): #custom crosshair
     if target is not None:
         enemy_type = getattr(target,'enemy_type','normal')
 
-        if getattr(target,'is_boss',False):
+        if getattr(target,'is_boss',False) and enemy_type != 'adaptive core':
             enemy_type = 'tank'
 
         label = font.render(
@@ -350,14 +350,8 @@ while running:
         pygame.display.flip()
         continue
 
-    if story and story.advance(dt, effects, audio):
-        enemies.clear()
-        bullets.clear()
-        enemy_bullets.clear()
-        player.rect.size = story.cockpit_hitbox
-        player.rect.center = player.position
-        ammo = max_ammo
-        camera_offset = effects.camera_offset()
+    if story:
+        story.advance(dt, effects, audio)
 
     controls_enabled = story is None or story.controls_enabled
 
@@ -487,23 +481,29 @@ while running:
             enemies.append(new_enemy)
 
     for enemy in enemies:
-        enemy.update(dt,player.position)
+        if story and enemy is story.boss:
+            story.update_boss(dt, player, pygame.mouse.get_pressed()[0], audio)
+        else:
+            enemy.update(dt,player.position)
 
         # RANGER SHOOTING
-        story_shot = story is not None and story.tank_ready_to_fire(enemy, dt)
+        story_shot = story is not None and enemy is story.boss and story.shot_timer <= 0
         if enemy.enemy_type == 'ranger' or story_shot:
             distance = enemy.position.distance_to(player.position)
 
-            if (story_shot or enemy.fire_timer <= 0) and distance <= 500:
-                direction = player.position - enemy.position
+            if story_shot or (enemy.fire_timer <= 0 and distance <= 500):
+                direction = story.aim_boss_shot(player) if story_shot else player.position - enemy.position
 
                 if direction.length_squared() > 0:
                     new_bullet = Bullet(enemy.position, direction)
-                    new_bullet.speed = 250
+                    new_bullet.speed = 320 if story_shot else 250
                     enemy_bullets.append(new_bullet)
                     if not story_shot:
                         enemy.fire_timer = 2.5
 
+    if story and story.finish_opening(player, enemies, bullets, enemy_bullets, effects, audio):
+        ammo = max_ammo
+        controls_enabled = False
     separate_enemies(enemies, WIDTH, HEIGHT)
 
     #shooting logic
@@ -596,13 +596,15 @@ while running:
         for enemy in enemies[:]:  #nested list
             if bullet.rect.colliderect(enemy.rect):
                 bullets.remove(bullet)
+                if story and enemy is story.boss:
+                    story.hit_boss(bullet.position, effects, audio)
+                    audio.play("hit")
+                    break
                 enemy_last_tick = pygame.time.get_ticks()
                 enemy.last_hit = enemy_last_tick
                 effects.hit_enemy(enemy)
                 audio.play("hit")
 
-                if story and enemy is story.tank and enemy.health <= 1:
-                    break
 
                 if enemy.take_damage(1):
                     if story:
@@ -675,6 +677,8 @@ while running:
     for enemy in enemies:
         ship_sprites.draw_enemy(world_surface, enemy)
         effects.draw_enemy_flash(world_surface, enemy)
+        if story and enemy is story.boss and story.shielded:
+            story.draw_boss_shield(world_surface)
 
     for bullet in bullets:
         bullet.draw(world_surface)
@@ -693,7 +697,7 @@ while running:
     screen.blit(world_surface, camera_offset)
 
     if story:
-        story.draw_hud(screen, font, player, ammo)
+        story.draw_hud(screen, player, ammo, difficulty['player_health'], max_ammo, malfunction, error_explanations.get(malfunction, ''))
         effects.draw_overlay(screen, WIDTH, HEIGHT)
         draw_crosshair(screen,enemies,target_font,camera_offset)
         pygame.display.flip()
