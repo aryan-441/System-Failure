@@ -1,8 +1,8 @@
 from pathlib import Path
 from zipfile import ZipFile
 
-root = Path(__file__).resolve.parent
-packs = root / "original_asset_packs"
+root = Path(__file__).resolve().parent
+packs = root.parent / "original_asset_packs"
 selection = {
     "kenney_space-shooter-redux.zip": {
         "Backgrounds/black.png": "assets/images/backgrounds/space_black.png",
