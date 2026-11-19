@@ -30,5 +30,5 @@ def get_high_score(score, difficulty):
         raise ValueError("Invalid scroe.")
 
     scores[difficulty] = max(scores[difficulty], score)
-    with open(filepath,'r') as f:
+    with open(filepath,'w') as f:
         json.dump(scores,f,indent=4)
