@@ -29,6 +29,6 @@ def get_high_score(score, difficulty):
     if type(score) is not int or score <0:
         raise ValueError("Invalid scroe.")
 
-    scores[difficulty] = max(score[difficulty], score)
+    scores[difficulty] = max(scores[difficulty], score)
     with open(filepath,'r') as f:
         json.dump(scores,f,indent=4)
