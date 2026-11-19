@@ -13,13 +13,21 @@ def load_high_score():
     try:
         with open(filepath, 'r') as f:
             data = json.load(f)
-        for difficulty in scores:
-            score = data.get(difficulty, 0)
-            if type(score) == int and score >= 0:
-                scores[difficulty] = max(scores[difficulty],score)
+        if isinstance(data,dict):
+            for difficulty in scores:
+                score = data.get(difficulty,0)
+
+                if type(score) is int and score >= 0:
+                    scores[difficulty] = score
     except (FileNotFoundError, OSError, ValueError, TypeError):
         pass
-    return 0
-def get_high_score(score):
+    return scores
+def get_high_score(score, difficulty):
+    scores = load_high_score()
+    if difficulty not in scores:
+        raise ValueError("Invalid difficulty.")
+    if type(score) is not int or score <0:
+        raise ValueError("Invalid scroe.")
+
     with open(filepath, 'w') as f:
         json.dump({'high_score' : score}, f, indent=4)
