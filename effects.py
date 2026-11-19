@@ -103,7 +103,7 @@ class ArcadeEffects:
         self.hit_overlay_timer = max(0.0, self.hit_overlay_timer - dt)
         self.shake = max(0.0, self.shake - 28 * dt)
 
-        for particle in self.particles:
+        for particle in self.particles[:]:
 
             particle['life'] -= dt
             if particle['life'] <= 0:
@@ -118,6 +118,8 @@ class ArcadeEffects:
         for label in self.floating_text[:]:
             label["life"] -= dt
             label["position"].y -= 60 * dt
+            if label['life'] <= 0:
+                self.floating_text.remove(label)
             
 
     def camera_offset(self):
@@ -132,11 +134,7 @@ class ArcadeEffects:
 
         image = getattr(enemy, "ship_image", None)
         if isinstance(image, pygame.Surface):
-            scale = 1.5 if getattr(enemy, "is_boss", False) else 1
-            size = (
-                max(1, int(image.get_width() * scale)),
-                max(1, int(image.get_height() * scale)),
-            )
+            size = enemy.rect.size
             key = (id(image), size)
             mask_image = self.white_masks.get(key)
 
