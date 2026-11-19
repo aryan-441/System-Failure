@@ -16,6 +16,7 @@ from effects import ArcadeEffects
 from arcade_audio import ArcadeAudio
 from enemy_spacing import separate_enemies
 from difficulty import DIFFICULTIES, DEFAULT_DIFFICULTY
+from story_mode import StoryMode
 
 try:
     pygame.mixer.pre_init(22050, -16, 1, 512)
@@ -46,6 +47,8 @@ def choose_difficulty():
                 return None
 
             if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_s:
+                    return 'story'
                 if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     return DEFAULT_DIFFICULTY
                 if event.key == pygame.K_1:
@@ -59,14 +62,14 @@ def choose_difficulty():
         background.draw(screen)
 
         title = title_font.render('SYSTEM FAILURE', True, (255, 80, 100))
-        heading = option_font.render('SELECT DIFFICULTY', True, (230, 240, 255))
+        heading = option_font.render('ARCADE DIFFICULTY', True, (230, 240, 255))
 
         easy = option_font.render('1  EASY  -  ROOKIE PILOT', True, (120, 220, 170))
         medium = option_font.render('2  MEDIUM  -  SPACE CADET', True, (130, 200, 255))
         hard = option_font.render('3  HARD  -  SYSTEM FAILURE', True, (255, 120, 120))
 
         info = info_font.render(
-            'Press 1, 2 or 3 to begin  |  Enter for Medium',
+            '1–3  Arcade   |   Enter  Medium   |   S  Story Mode',
             True,
             (190, 200, 220)
         )
@@ -86,6 +89,10 @@ difficulty_name = choose_difficulty()
 if difficulty_name is None:
     pygame.quit()
     raise SystemExit
+
+story_selected = difficulty_name == 'story'
+if story_selected:
+    difficulty_name = DEFAULT_DIFFICULTY
 
 difficulty = DIFFICULTIES[difficulty_name]
 
@@ -113,7 +120,7 @@ malfunction = 'NONE'
 bullets = []
 enemy_bullets = []
 score = 0
-high_score = load_high_score()[difficulty_name]
+high_score = 0 if story_selected else load_high_score()[difficulty_name]
 previous_high_score = high_score
 new_record = False
 shot_timer = 0
@@ -149,7 +156,9 @@ reactor_active = False
 player = Player(WIDTH/2, HEIGHT/2)
 player.health = difficulty['player_health']
 
-enemies = create_starting_enemies()
+story = StoryMode(player, ship_sprites) if story_selected else None
+enemies = [story.tank] if story else create_starting_enemies()
+minimum_health = 1 if story else 0
 
 pygame.mouse.set_visible(False)
 target_font = pygame.font.Font(None,22)
@@ -235,6 +244,11 @@ while running:
             running = False
 
         if event.type == pygame.KEYDOWN: #restarts
+            if story:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
+                story.recover_part(event.key)
+                continue
             if player.health <= 0 and event.key in (
                 pygame.K_r, pygame.K_1, pygame.K_2, pygame.K_3
             ):
@@ -336,10 +350,21 @@ while running:
         pygame.display.flip()
         continue
 
-    # No system errors for the first 15 seconds
-    round_changed = round_manager.update(dt)
+    if story and story.advance(dt, effects, audio):
+        enemies.clear()
+        bullets.clear()
+        enemy_bullets.clear()
+        player.rect.size = story.cockpit_hitbox
+        player.rect.center = player.position
+        ammo = max_ammo
+        camera_offset = effects.camera_offset()
 
-    if game_time >= 15 and not first_failure_started and round_manager.current_malfunction != 'NONE':
+    controls_enabled = story is None or story.controls_enabled
+
+    # No system errors for the first 15 seconds
+    round_changed = story is None and round_manager.update(dt)
+
+    if story is None and game_time >= 15 and not first_failure_started and round_manager.current_malfunction != 'NONE':
         first_failure_started = True
         round_manager.round_timer = 0
         malfunction = round_manager.current_malfunction
@@ -418,7 +443,8 @@ while running:
     if malfunction == 'ENGINE_STALLING' and is_stalled:
         player.speed = 0
 
-    player.update(dt, keys,malfunction)
+    if controls_enabled:
+        player.update(dt, keys,malfunction)
 
     player.speed = original_speed
 
@@ -437,7 +463,7 @@ while running:
     #spawner.spawn_interval = 1 / enemies_per_second
 
     # AUTOMATIC ENEMY SPAWNING
-    spawn_ready = spawner.update(dt, malfunction != 'NONE') 
+    spawn_ready = story is None and spawner.update(dt, malfunction != 'NONE') 
     if len(enemies) < max_enemies and spawn_ready:
             new_enemy = spawner.spawn()
             allow_boss = game_time >= 40 and game_time - last_boss_spawn >= boss_spawn_cooldown
@@ -461,17 +487,19 @@ while running:
         enemy.update(dt,player.position)
 
         # RANGER SHOOTING
-        if enemy.enemy_type == 'ranger':
+        story_shot = story is not None and story.tank_ready_to_fire(enemy, dt)
+        if enemy.enemy_type == 'ranger' or story_shot:
             distance = enemy.position.distance_to(player.position)
 
-            if enemy.fire_timer <= 0 and distance <= 500:
+            if (story_shot or enemy.fire_timer <= 0) and distance <= 500:
                 direction = player.position - enemy.position
 
                 if direction.length_squared() > 0:
                     new_bullet = Bullet(enemy.position, direction)
                     new_bullet.speed = 250
                     enemy_bullets.append(new_bullet)
-                    enemy.fire_timer = 2.5
+                    if not story_shot:
+                        enemy.fire_timer = 2.5
 
     separate_enemies(enemies, WIDTH, HEIGHT)
 
@@ -501,7 +529,7 @@ while running:
                 if malfunction == 'SHIELD_MALFUNCTION':
                     damage = 2
 
-                player.health = max(0, player.health - damage)
+                player.health = max(minimum_health, player.health - damage)
                 damage_timer = difficulty['damage_cooldown']
                 effects.player_hit(player.position, damage)
                 audio.play("player_hit")
@@ -527,7 +555,7 @@ while running:
     else:
         empty_ammo_timer = 0
 
-    if mouse_buttons[0] and shot_timer <= 0 and ammo > 0 and not overheated: #if the user clicks and time is left
+    if controls_enabled and mouse_buttons[0] and shot_timer <= 0 and ammo > 0 and not overheated: #if the user clicks and time is left
         direction = pygame.Vector2(world_mous_pos) - player.position
 
         if malfunction == 'TARGETING_GLITCH':
@@ -570,6 +598,9 @@ while running:
                 effects.hit_enemy(enemy)
                 audio.play("hit")
 
+                if story and enemy is story.tank and enemy.health <= 1:
+                    break
+
                 if enemy.take_damage(1):
                     effects.enemy_destroyed(enemy)
                     audio.play("enemy_down")
@@ -577,7 +608,7 @@ while running:
                     score += 100
                     ammo = min(max_ammo, ammo + ammo_per_kill)
 
-                    if score > high_score:
+                    if story is None and score > high_score:
                         new_record = True
                         high_score = score
                         try:
@@ -604,7 +635,7 @@ while running:
                     if malfunction == 'SHIELD_MALFUNCTION':
                         damage = 3
 
-                    player.health = max(0, player.health - damage)
+                    player.health = max(minimum_health, player.health - damage)
                     damage_timer = difficulty['damage_cooldown']
                     effects.player_hit(player.position, damage)
                     audio.play("player_hit")
@@ -615,7 +646,7 @@ while running:
                 else:
                     damage = 1
 
-                player.health = max(0, player.health - damage)
+                player.health = max(minimum_health, player.health - damage)
                 damage_timer = difficulty['damage_cooldown']
                 effects.player_hit(player.position, damage)
                 audio.play("player_hit")
@@ -629,7 +660,11 @@ while running:
 
     world_surface.fill(BG_COLOUR)
     background.draw(world_surface)
-    ship_sprites.draw_player(world_surface, player, world_mous_pos)
+    if story:
+        story.update_ship(player, world_mous_pos, dt, effects)
+        story.draw_ship(world_surface)
+    else:
+        ship_sprites.draw_player(world_surface, player, world_mous_pos)
 
     for enemy in enemies:
         ship_sprites.draw_enemy(world_surface, enemy)
@@ -650,6 +685,13 @@ while running:
     effects.draw(world_surface)
     screen.fill(BG_COLOUR)
     screen.blit(world_surface, camera_offset)
+
+    if story:
+        story.draw_hud(screen, font, player, ammo)
+        effects.draw_overlay(screen, WIDTH, HEIGHT)
+        draw_crosshair(screen,enemies,target_font,camera_offset)
+        pygame.display.flip()
+        continue
 
     '''pygame.draw.line(
     screen,
