@@ -113,7 +113,7 @@ malfunction = 'NONE'
 bullets = []
 enemy_bullets = []
 score = 0
-high_score = load_high_score()
+high_score = load_high_score()[difficulty_name]
 previous_high_score = high_score
 new_record = False
 shot_timer = 0
@@ -179,14 +179,19 @@ error_explanations = {
 }
 
 
-def draw_crosshair(screen,enemies,font): #custom crosshair
+def draw_crosshair(screen,enemies,font, camera_offset): #custom crosshair
     mouse_pos = pygame.mouse.get_pos()
     x,y = mouse_pos
+
+    world_mous_pos = (
+        x - camera_offset[0],
+        y -camera_offset[1]
+    )
 
     target = None
 
     for enemy in enemies:
-        if enemy.rect.collidepoint(mouse_pos):
+        if enemy.rect.collidepoint(world_mous_pos):
             target = enemy
             break
 
@@ -211,8 +216,8 @@ def draw_crosshair(screen,enemies,font): #custom crosshair
         )
 
         label_rect = label.get_rect(
-            centerx=target.rect.centerx,
-            bottom=target.rect.top - 16
+            centerx=target.rect.centerx + camera_offset[0],
+            bottom=target.rect.top + camera_offset[1] - 16
         )
 
         screen.blit(label,label_rect)
@@ -223,6 +228,7 @@ while running:
     game_time += dt
     background.update(dt)  #bg updates after each line
     effects.update(dt)
+    camera_offset = effects.camera_offset()
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -256,6 +262,8 @@ while running:
                 bullets = []
                 enemy_bullets = []
                 score = 0
+                high_score = load_high_score()[difficulty_name]
+
                 previous_high_score = high_score
                 new_record = False
                 shot_timer = 0
@@ -429,8 +437,8 @@ while running:
     #spawner.spawn_interval = 1 / enemies_per_second
 
     # AUTOMATIC ENEMY SPAWNING
-
-    if len(enemies) < max_enemies and spawner.update(dt, malfunction != 'NONE'):
+    spawn_ready = spawner.update(dt, malfunction != 'NONE') 
+    if len(enemies) < max_enemies and spawn_ready:
             new_enemy = spawner.spawn()
             allow_boss = game_time >= 40 and game_time - last_boss_spawn >= boss_spawn_cooldown
             '''tank_alive = False
@@ -469,6 +477,10 @@ while running:
 
     #shooting logic
     mouse_pos = pygame.mouse.get_pos()
+    world_mous_pos = (
+        mouse_pos[0] - camera_offset[0],
+        mouse_pos[1] - camera_offset[1]
+    )
     mouse_buttons = pygame.mouse.get_pressed()
     shot_timer = max(0, shot_timer - dt) #decreases the timer and ensures that the value doesnt become negative
     damage_timer = max(0, damage_timer - dt)
@@ -493,6 +505,8 @@ while running:
                 damage_timer = difficulty['damage_cooldown']
                 effects.player_hit(player.position, damage)
                 audio.play("player_hit")
+    if player.health <= 0:
+        continue
 
     if malfunction == 'WEAPON_OVERHEATING':
         weapon_heat = max(0, weapon_heat - cooling_rate * dt)
@@ -514,7 +528,7 @@ while running:
         empty_ammo_timer = 0
 
     if mouse_buttons[0] and shot_timer <= 0 and ammo > 0 and not overheated: #if the user clicks and time is left
-        direction = pygame.Vector2(mouse_pos) - player.position
+        direction = pygame.Vector2(world_mous_pos) - player.position
 
         if malfunction == 'TARGETING_GLITCH':
             direction = direction.rotate(random.uniform(-17, 17))
@@ -567,7 +581,7 @@ while running:
                         new_record = True
                         high_score = score
                         try:
-                            get_high_score(high_score)
+                            get_high_score(high_score, difficulty_name)
                         except OSError:
                             pass
 
@@ -615,7 +629,7 @@ while running:
 
     world_surface.fill(BG_COLOUR)
     background.draw(world_surface)
-    ship_sprites.draw_player(world_surface, player, mouse_pos)
+    ship_sprites.draw_player(world_surface, player, world_mous_pos)
 
     for enemy in enemies:
         ship_sprites.draw_enemy(world_surface, enemy)
@@ -635,7 +649,7 @@ while running:
 
     effects.draw(world_surface)
     screen.fill(BG_COLOUR)
-    screen.blit(world_surface, effects.camera_offset())
+    screen.blit(world_surface, camera_offset)
 
     '''pygame.draw.line(
     screen,
@@ -718,7 +732,7 @@ while running:
         screen.blit(record_text, (WIDTH - record_text.get_width() - 20, HEIGHT - 40))
 
     effects.draw_overlay(screen, WIDTH, HEIGHT)
-    draw_crosshair(screen,enemies,target_font)
+    draw_crosshair(screen,enemies,target_font,camera_offset)
     pygame.display.flip() #the flip method updates the display
 
 pygame.mouse.set_visible(True)
