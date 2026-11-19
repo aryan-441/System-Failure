@@ -22,6 +22,11 @@ class ShipPart:
         self.start_position = self.position.copy()
         self.start_angle = 0
 
+        self.attached = True
+        self.returning = False
+        self.return_timer = 0.0
+        self.return_duration = 0.8
+
     def draw(self, screen):
         rotated_image = pygame.transform.rotate(self.image, self.angle)
         rect = rotated_image.get_rect(center=self.position)
@@ -38,19 +43,22 @@ class ModularShip:
         width, height = image.get_size()
         left_edge = width * 35 // 99
         right_edge = width * 64 // 99
-        cockpit_bottom = height * 45 // 75
-
         regions = [
-            pygame.Rect(left_edge, 0, right_edge - left_edge, cockpit_bottom),
-            pygame.Rect(0, 0, left_edge, height),
-            pygame.Rect(right_edge, 0, width - right_edge, height),
-            pygame.Rect(
-                left_edge,
-                cockpit_bottom,
-                right_edge - left_edge,
-                height - cockpit_bottom,
-            ),
+            pygame.Rect(left_edge, 0, right_edge - left_edge, height)
         ]
+
+        left_wing = pygame.Rect(0, 0, left_edge, height)
+        right_wing = pygame.Rect(right_edge, 0, width - right_edge, height)
+        wings = [
+            image.subsurface(wing).get_bounding_rect().move(wing.x, wing.y)
+            for wing in (left_wing, right_wing)
+        ]
+
+        for row in range(3):
+            for wing in wings:
+                top = wing.top + row * wing.height // 3
+                bottom = wing.top + (row + 1) * wing.height // 3
+                regions.append(pygame.Rect(wing.x, top, wing.width, bottom - top))
 
         for region in regions:
             self.add_part(image, region)
@@ -66,19 +74,25 @@ class ModularShip:
     def explode(self):
         self.state = "broken"
 
-        # Left wing, right wing, engine.
         directions = [
-            pygame.Vector2(-1, -0.3),
-            pygame.Vector2(1, -0.3),
-            pygame.Vector2(0, 1),
-        ]
-        spins = [-110, 110, 45]
+    pygame.Vector2(-1, -0.8),  # Left upper
+    pygame.Vector2(1, -0.8),   # Right upper
+    pygame.Vector2(-1, 0.1),   # Left middle
+    pygame.Vector2(1, 0.1),    # Right middle
+    pygame.Vector2(-1, 0.9),   # Left lower
+    pygame.Vector2(1, 0.9),    # Right lower
+]
+
+        spins = [-140, 140, -90, 90, -120, 120]
 
         for part, direction, spin in zip(
             self.parts[1:], directions, spins
         ):
             part.velocity = direction.normalize() * 170
             part.rotation_speed = spin
+            part.attached = False
+            part.returning = False
+            part.return_timer = 0
 
     def reassemble(self):
         self.state = "reassembling"
@@ -88,14 +102,62 @@ class ModularShip:
             part.start_position = part.position.copy()
             part.start_angle = part.angle
 
+    def recover_part(self,part_id):
+        if 1 <= part_id <= 6:
+            part = self.parts[part_id]
+            if part.attached == False:
+                if part.returning == False:
+                    part.return_timer = 0
+                    part.start_position = part.position.copy()
+                    part.start_angle = part.angle
+                    part.returning = True
+
+
     def update(self, dt):
+        self.parts[0].position = self.centre + self.parts[0].offset
         if self.state == "broken":
             for part in self.parts[1:]:
-                part.position += part.velocity * dt
-                part.angle += part.rotation_speed * dt
-                part.velocity *= max(0, 1 - 1.8 * dt)
-                part.rotation_speed *= max(0, 1 - 2.5 * dt)
+                if part.attached:
+                    part.position = self.centre + part.offset
+                    part.angle = 0
+                elif part.returning:
+                # Individual recovery animation
+                    part.return_timer += dt
 
+                    progress = min(
+                        1, part.return_timer / part.return_duration
+                    )
+
+                    eased = 1 - (1 - progress) ** 3
+
+                    target = self.centre + part.offset
+
+                    part.position = part.start_position.lerp(
+                        target, eased
+                    )
+
+                    part.angle = part.start_angle * (1 - eased)
+
+                    if progress >= 1:
+                        part.attached = True
+                        part.returning = False
+                        part.position = target
+                        part.angle = 0
+                        part.velocity = pygame.Vector2(0, 0)
+                        part.rotation_speed = 0
+
+                else:
+                    part.position += part.velocity * dt
+                    part.angle += part.rotation_speed * dt
+                    part.velocity *= max(0, 1 - 1.8 * dt)
+                    part.rotation_speed *= max(0, 1 - 2.5 * dt)
+            all_attached = True
+            for part in self.parts[1:]:
+                if part.attached == False:
+                    all_attached = False
+                    break
+            if all_attached:
+                self.state = 'intact'
         elif self.state == "reassembling":
             self.animation_timer += dt
             progress = min(1, self.animation_timer / 1.2)
@@ -107,8 +169,17 @@ class ModularShip:
                 part.angle = part.start_angle * (1 - eased)
 
             if progress >= 1:
+                for part in self.parts[1:]:
+                    part.attached = True
+                    part.returning = False
+                    part.return_timer = 0
                 self.state = "intact"
 
+        elif self.state == "intact":
+            for part in self.parts[1:]:
+                part.position = self.centre + part.offset
+                part.angle = 0
+            
     def draw(self, screen):
         for part in self.parts:
             part.draw(screen)
@@ -241,6 +312,9 @@ if __name__ == '__main__':
 
                     spawn_spark_effect(effects,ship.centre,blue_spark_texture,16)
 
+                elif pygame.K_1 <= event.key <= pygame.K_6 and ship.state == 'broken':
+                    ship.recover_part(event.key - pygame.K_0)
+
         previous_state = ship.state
 
         ship.update(dt)
@@ -315,7 +389,7 @@ if __name__ == '__main__':
             screen.blit(flash_surface, (0, 0))
 
         instruction = font.render(
-            'SPACE: Break apart    R: Reassemble',
+            'SPACE: Break apart    1-6: Recover part    R: Reassemble',
             True,
             (210, 225, 255)
         )
