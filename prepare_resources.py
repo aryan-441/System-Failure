@@ -1,7 +1,7 @@
 from pathlib import Path
 from zipfile import ZipFile
 
-root = Path(r"G:\My Drive\Programming\haven")
+root = Path(__file__).resolve.parent
 packs = root / "original_asset_packs"
 selection = {
     "kenney_space-shooter-redux.zip": {
@@ -55,6 +55,7 @@ for archive_name, files in selection.items():
             target = root / destination
             if target.exists():
                 continue
+            target.parent.mkdir(parents=True,exist_ok=True)
             target.write_bytes(archive.read(source))
         for name in archive.namelist():
             if Path(name).name.lower() == "license.txt":
