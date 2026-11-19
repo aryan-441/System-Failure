@@ -1,5 +1,5 @@
 import math
-from enum import Enum, auto
+from enum import Enum, auto #cool library for game states
 
 import pygame
 
@@ -14,6 +14,10 @@ class StoryPhase(Enum):
     RECOVERY = auto()
     RECOVERY_COMPLETE = auto()
 
+class RecoveryStep(Enum):
+    OBJECTIVE = auto()
+    PICKUP = auto()
+    RETURNNG = auto()
 
 class StoryMode:
     opening_duration = 18.0
@@ -35,7 +39,49 @@ class StoryMode:
         player.rect.size = self.assembled_hitbox
         player.rect.center = player.position
 
-    @property
+        self.recovery_step = RecoveryStep.OBJECTIVE
+        self.objective_index = 0
+        self.objective_progress = 0
+        self.objective_timer = 0.0
+
+        self.objectives = [
+            {
+                "type": "kill",
+                "enemy": "normal",
+                "target": 3,
+                "description": "Defeat 3 chasers"
+            },
+            {
+                "type": "survive",
+                "target": 20,
+                "description": "Survive the enemy wave"
+            },
+            {
+                "type": "reach",
+                "target": (WIDTH - 120, HEIGHT - 100),
+                "description": "Reach the distress signal"
+            },
+            {
+                "type": "kill",
+                "enemy": "interceptor",
+                "target": 2,
+                "description": "Defeat 2 interceptors"
+            },
+            {
+                "type": "survive",
+                "target": 25,
+                "description": "Survive the enemy assault"
+            },
+            {
+                "type": "kill",
+                "enemy": "normal",
+                "target": 5,
+                "description": "Eliminate the remaining enemies"
+            }
+        ]
+
+        self.spawned_objective_index = -1
+    @property #decorator- allows controls_enabled to behave like an attribute instead of a method
     def controls_enabled(self):
         return self.phase != StoryPhase.SCRIPTED_DEFEAT
 
@@ -107,3 +153,113 @@ class StoryMode:
         screen.blit(title, title.get_rect(midtop=(WIDTH // 2, 20)))
         status = font.render(f'Health: {player.health}    Ammo: {ammo}', True, (255, 220, 90))
         screen.blit(status, (20, 20))
+
+    def update_objective(self, dt, player):
+        if self.phase != StoryPhase.RECOVERY:
+            return
+        if self.recovery_step !=  RecoveryStep.OBJECTIVE:
+            return
+        if self.objective_index >= len(self.objectives):
+            return
+
+        objective = self.objectives[self.objective_index]
+        if objective['type'] == 'survive':
+            self.objective_timer += dt
+
+            if self.objective_timer >= objective['target']:
+                self.recovery_step = RecoveryStep.PICKUP
+
+        elif objective['type'] == 'reach':
+            target_position = pygame.Vector2(objective['target'])
+            distance = player.position.distance_to(target_position)
+
+            if distance <= 35:
+                self.recovery_step = RecoveryStep.PICKUP
+
+    def record_kill(self,enemy):
+        if self.phase != StoryPhase.RECOVERY:
+            return
+        if self.phase != RecoveryStep.OBJECTIVE:
+            return
+        if self.objective_index >= len(self.objectives):
+            return
+        objective = self.objectives[self.objective_index]
+        if objective['type'] != 'kill':
+            return
+        if enemy.enemy_type != objective['enemy']:
+            return
+        self.objective_progress += 1
+        if self.objective_progress >= objective['target']:
+            self.recovery_step = RecoveryStep.PICKUP
+
+    def update_pickup(self,player):
+        if self.phase != StoryPhase.RECOVERY:
+            return
+        part_id = self.objective_index + 1 #bcuz we arent collecting the cockpit
+        part = self.ship_parts[part_id]
+        if self.recovery_step == RecoveryStep.PICKUP:
+            part.velocity = pygame.Vector2(0,0)
+            part.rotation_speed = 0
+
+            margin = 60
+            part.position.x = max(margin,min(WIDTH-margin, part.position.x))
+
+            part.position.y = max(margin,min(HEIGHT - margin, part.position.y))
+
+            distance = player.position.distance_to(part.position)
+            if distance <= 40:
+                self.ship.recover_part(part_id)
+                self.recovery_step(RecoveryStep.RETURNING)
+            elif self.recovery_step == RecoveryStep.RETURNING:
+                if part.attached:
+                    if self.objective_index < len(self.objectives) - 1:
+                        self.objective_index += 1
+                        self.objective_progress = 0
+                        self.objective_timer = 0.0
+                        self.recovery_step = RecoveryStep.OBJECTIVE
+
+    def spawn_recovery_enemies(self, enemies, ship_sprites, player):
+        if self.phase != StoryPhase.RECOVERY:
+            return
+        if self.recovery_step != RecoveryStep.OBJECTIVE:
+            return
+        if self.objective_index >= len(self.objectives):
+            return
+        if self.spawned_objective_index == self.objective_index:
+            return
+        objective = self.objectives[self.objective_index]
+
+        if objective['type'] == 'kill':
+            enemy_types = [objective['enemy']] * objective['target']
+        elif objective['type'] == 'survive':
+            enemy_types = ['normal','normal','interceptor']
+        elif objective['type'] == 'reach':
+            enemy_types = ['normal', 'normal']
+        else:
+            return
+
+        spawn_positions = [
+            (70, 70),
+            (WIDTH - 70, 70),
+            (70, HEIGHT - 70),
+            (WIDTH - 70, HEIGHT - 70),
+            (WIDTH // 2, 70),
+            (WIDTH // 2, HEIGHT - 70)
+        ]
+
+        spawn_positions.sort(
+            key=lambda position: player.position.distance_to(position),
+            reverse=True
+        )
+
+        enemies.clear()
+
+        for i, enemy_type in enumerate(enemy_types):
+            x, y = spawn_positions[i]
+
+            enemy = Enemy(x, y, enemy_type)
+            ship_sprites.prepare_enemy(enemy, allow_boss=False)
+
+            enemies.append(enemy)
+
+        self.spawned_objective_index = self.objective_index
