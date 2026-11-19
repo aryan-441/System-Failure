@@ -458,12 +458,15 @@ while running:
     player.position.x = max(half, min(WIDTH - half, player.position.x))
     player.position.y = max(half, min(HEIGHT - half, player.position.y))
     player.rect.center = player.position
-
+    if story:
+        story.update_objective(dt, player)
     #enemies_per_second = min(0.65, 0.30 + game_time * 0.002)
     #spawner.spawn_interval = 1 / enemies_per_second
 
     # AUTOMATIC ENEMY SPAWNING
     spawn_ready = story is None and spawner.update(dt, malfunction != 'NONE') 
+    if story:
+        story.spawn_recovery_enemies(enemies, ship_sprites, player)
     if len(enemies) < max_enemies and spawn_ready:
             new_enemy = spawner.spawn()
             allow_boss = game_time >= 40 and game_time - last_boss_spawn >= boss_spawn_cooldown
@@ -602,6 +605,8 @@ while running:
                     break
 
                 if enemy.take_damage(1):
+                    if story:
+                        story.record_kill(enemy)
                     effects.enemy_destroyed(enemy)
                     audio.play("enemy_down")
                     enemies.remove(enemy)
@@ -662,6 +667,7 @@ while running:
     background.draw(world_surface)
     if story:
         story.update_ship(player, world_mous_pos, dt, effects)
+        story.update_pickup(player)
         story.draw_ship(world_surface)
     else:
         ship_sprites.draw_player(world_surface, player, world_mous_pos)
