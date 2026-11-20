@@ -36,7 +36,7 @@ class Enemy:
         self.max_health = self.health
         self.rect.center = self.position
 
-    def update(self, dt, player_position):
+    def update(self, dt, player_position, strategy=None, boss_phase=1):
         self.hit_flash_timer = max(0.0, self.hit_flash_timer - dt)
         direction = player_position - self.position
         distance = direction.length()
@@ -44,7 +44,26 @@ class Enemy:
         if distance > 0:
             direction = direction.normalize()
 
-            if self.enemy_type == 'ranger':
+            if self.is_boss and strategy is not None:
+                perpendicular = pygame.Vector2(-direction.y, direction.x)
+                if boss_phase == 1:
+                    movement = direction
+                    speed_multiplier = 1.0
+                elif boss_phase == 2:
+                    if strategy == 'AGGRESSIVE':
+                        movement = direction * 0.25 + perpendicular
+                    elif strategy == 'STATIONARY':
+                        movement = direction * 1.35
+                    else:
+                        movement = direction * 0.35 + perpendicular * 0.9
+                    speed_multiplier = 1.15
+                else:
+                    movement = direction * 0.55 + perpendicular * 1.15
+                    speed_multiplier = 1.55
+
+                if movement.length_squared() > 0:
+                    self.position += movement.normalize() * self.speed * speed_multiplier * dt
+            elif self.enemy_type == 'ranger':
                 if distance > 350:
                     self.position += direction * self.speed * dt
 
