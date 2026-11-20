@@ -247,7 +247,7 @@ while running:
             if story:
                 if event.key == pygame.K_ESCAPE:
                     running = False
-                story.recover_part(event.key)
+                #story.recover_part(event.key)
                 continue
             if player.health <= 0 and event.key in (
                 pygame.K_r, pygame.K_1, pygame.K_2, pygame.K_3
@@ -460,7 +460,7 @@ while running:
     # AUTOMATIC ENEMY SPAWNING
     spawn_ready = story is None and spawner.update(dt, malfunction != 'NONE') 
     if story:
-        story.spawn_recovery_enemies(enemies, ship_sprites, player)
+        story.spawn_recovery_enemies(enemies, ship_sprites, player,dt)
     if len(enemies) < max_enemies and spawn_ready:
             new_enemy = spawner.spawn()
             allow_boss = game_time >= 40 and game_time - last_boss_spawn >= boss_spawn_cooldown
