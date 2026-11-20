@@ -14,6 +14,13 @@ class ArcadeAudio:
         "game_over": "interface/defeat.ogg",
         "overheat": "warnings/system_force_field.ogg",
         "ammo": "interface/recovery_shield_up.ogg",
+        "core_shot": "weapons/laser_large.ogg",
+        "core_shield": "warnings/system_force_field.ogg",
+        "core_repair": "interface/recovery_shield_up.ogg",
+        "wave_clear": "interface/victory_or_confirm.ogg",
+        "part_pickup": "interface/kenney/select_006.ogg",
+        "part_attached": "interface/kenney/confirmation_002.ogg",
+        "wave_fault": "interface/kenney/glitch_003.ogg",
         "warning": "warnings/system_computer_noise.ogg"
     }
 
