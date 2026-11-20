@@ -30,6 +30,7 @@ class ShipSprites:
             self.bomber_image
         ]
 
+        self.adaptive_image = self.load_image(enemy_folder, "boss_ship_large") or self.tank_image
         self.boss_image = self.tank_image
         self.boss_chance = 0.5   #50 percent tank chance
 
