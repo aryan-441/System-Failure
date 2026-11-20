@@ -57,43 +57,65 @@ class StoryMode:
         self.objective_progress = 0
         self.objective_timer = 0.0
 
+        
         self.objectives = [
             {
-                "type": "kill",
-                "enemy": "normal",
-                "target": 3,
-                "description": "Defeat 3 chasers"
+                'type': 'kill',
+                'enemies': ['normal', 'normal', 'normal'],
+                'target': 3,
+                'debuff': 'DAMAGED_THRUSTERS',
+                'upgrade': 'ENHANCED_THRUSTERS',
+                'description': 'Wave 1: Defeat 3 enemies'
             },
             {
-                "type": "survive",
-                "target": 20,
-                "description": "Survive the enemy wave"
+                'type': 'kill',
+                'enemies': ['normal', 'normal', 'normal', 'normal', 'interceptor'],
+                'target': 5,
+                'debuff': 'TARGETING_GLITCH',
+                'upgrade': 'TARGETING_COMPUTER',
+                'description': 'Wave 2: Defeat 5 enemies'
             },
             {
-                "type": "reach",
-                "target": (WIDTH - 120, HEIGHT - 100),
-                "description": "Reach the distress signal"
+                'type': 'kill',
+                'enemies': ['normal', 'normal', 'normal', 'interceptor', 'interceptor'],
+                'target': 5,
+                'debuff': 'HULL_BREACH',
+                'upgrade': 'REINFORCED_ARMOUR',
+                'description': 'Wave 3: Defeat 5 enemies'
             },
             {
-                "type": "kill",
-                "enemy": "interceptor",
-                "target": 2,
-                "description": "Defeat 2 interceptors"
+                'type': 'kill',
+                'enemies': ['normal', 'normal', 'interceptor', 'interceptor', 'ranger'],
+                'target': 5,
+                'debuff': 'AMMO_LEAK',
+                'upgrade': 'EXPANDED_MAGAZINE',
+                'description': 'Wave 4: Defeat 5 enemies'
             },
             {
-                "type": "survive",
-                "target": 25,
-                "description": "Survive the enemy assault"
+                'type': 'kill',
+                'enemies': ['normal', 'normal', 'interceptor', 'interceptor', 'ranger', 'ranger'],
+                'target': 6,
+                'debuff': 'SALVAGE_FAILURE',
+                'upgrade': 'SALVAGE_MODULE',
+                'description': 'Wave 5: Defeat 6 enemies'
             },
             {
-                "type": "kill",
-                "enemy": "normal",
-                "target": 5,
-                "description": "Eliminate the remaining enemies"
+                'type': 'kill',
+                'enemies': ['normal', 'normal', 'interceptor', 'interceptor', 'tank'],
+                'target': 5,
+                'debuff': 'WEAPON_OVERHEATING',
+                'upgrade': 'OVERCLOCKED_WEAPONS',
+                'description': 'Wave 6: Defeat 5 enemies'
             }
         ]
 
         self.spawned_objective_index = -1
+        self.wave_spawn_index = 0
+        self.wave_spawn_timer = 0.0
+        self.wave_spawn_interval = 0.0
+        self.wave_active_limit = 0
+        self.wave_active_enemies = []
+
     @property #decorator- allows controls_enabled to behave like an attribute instead of a method
     def controls_enabled(self):
         return self.phase != StoryPhase.SCRIPTED_DEFEAT
@@ -221,19 +243,7 @@ class StoryMode:
         if self.objective_index >= len(self.objectives):
             return
 
-        objective = self.objectives[self.objective_index]
-        if objective['type'] == 'survive':
-            self.objective_timer += dt
-
-            if self.objective_timer >= objective['target']:
-                self.recovery_step = RecoveryStep.PICKUP
-
-        elif objective['type'] == 'reach':
-            target_position = pygame.Vector2(objective['target'])
-            distance = player.position.distance_to(target_position)
-
-            if distance <= 35:
-                self.recovery_step = RecoveryStep.PICKUP
+        self.objective_timer += dt
 
     def record_kill(self,enemy):
         if self.phase != StoryPhase.RECOVERY:
@@ -247,9 +257,17 @@ class StoryMode:
             return
         if enemy.enemy_type != objective['enemy']:
             return
+
+        self.wave_active_enemies.remove(enemy)
         self.objective_progress += 1
+
+        objective = self.objectives[self.objective_index]
+        
         if self.objective_progress >= objective['target']:
-            self.recovery_step = RecoveryStep.PICKUP
+            if self.wave_spawn_index >= len(objective['enemies']):
+                if not self.wave_active_enemies:
+
+                    self.recovery_step = RecoveryStep.PICKUP
 
     def update_pickup(self,player):
         if self.phase != StoryPhase.RECOVERY:
@@ -277,48 +295,48 @@ class StoryMode:
                     self.objective_timer = 0.0
                     self.recovery_step = RecoveryStep.OBJECTIVE
 
-    def spawn_recovery_enemies(self, enemies, ship_sprites, player):
+    def spawn_recovery_enemies(self, enemies, ship_sprites, player, dt):
         if self.phase != StoryPhase.RECOVERY:
             return
         if self.recovery_step != RecoveryStep.OBJECTIVE:
             return
         if self.objective_index >= len(self.objectives):
             return
-        if self.spawned_objective_index == self.objective_index:
-            return
+        
         objective = self.objectives[self.objective_index]
 
-        if objective['type'] == 'kill':
-            enemy_types = [objective['enemy']] * objective['target']
-        elif objective['type'] == 'survive':
-            enemy_types = ['normal','normal','interceptor']
-        elif objective['type'] == 'reach':
-            enemy_types = ['normal', 'normal']
-        else:
-            return
+        if self.spawned_objective_index != self.objective_index:
+            self.spawned_objective_index = self.objective_index
+            self.wave_spawn_index = 0
+            self.wave_spawn_timer = self.wave_spawn_interval
+            self.wave_active_enemies = []
 
+        self.wave_spawn_timer += dt
+
+        if self.wave_spawn_index >= len(objective['enemies']):
+            return
+        if len(self.wave_active_enemies) >= self.wave_active_limit:
+            return
         spawn_positions = [
-            (70, 70),
+            (70,70),
             (WIDTH - 70, 70),
             (70, HEIGHT - 70),
             (WIDTH - 70, HEIGHT - 70),
             (WIDTH // 2, 70),
-            (WIDTH // 2, HEIGHT - 70)
+            (WIDTH // 2, HEIGHT - 70),
         ]
 
         spawn_positions.sort(
-            key=lambda position: player.position.distance_to(position),
-            reverse=True
+            key = lambda position: player.position.distance_to(position), reverse=True
         )
+        position_index = self.wave_spawn_index % len(spawn_positions)
+        x,y = spawn_positions[position_index]
 
-        enemies.clear()
+        enemy_type = objective['enemies'][self.wave_spawn_index]
+        enemy = Enemy(x, y, enemy_type)
+        ship_sprites.prepare_enemy(enemy,allow_boss=True)
 
-        for i, enemy_type in enumerate(enemy_types):
-            x, y = spawn_positions[i]
-
-            enemy = Enemy(x, y, enemy_type)
-            ship_sprites.prepare_enemy(enemy, allow_boss=False)
-
-            enemies.append(enemy)
-
-        self.spawned_objective_index = self.objective_index
+        enemies.append(enemy)
+        self.wave_active_enemies.append(enemy)
+        self.wave_spawn_index += 1
+        self.wave_spawn_timer = 0.0
