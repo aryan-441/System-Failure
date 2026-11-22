@@ -44,6 +44,8 @@ class StoryMode:
     survival_duration = 35.0
     survival_retreat_duration = 2.65
     retreating_attack_duration = 15.0
+    returning_charge_duration = 1.5
+    returning_damage_cooldown = 1.65
     survival_shield_cycle = 6.0
     survival_shield_duration = 1.0
     defeat_duration = 2.15
@@ -181,6 +183,7 @@ class StoryMode:
 
         self.returning_cores = []
         self.returning_core_ai ={}
+        self.returning_volley_fired = False
     @property #decorator- allows controls_enabled to behave like an attribute instead of a method
     def controls_enabled(self):
         return self.phase not in (StoryPhase.SCRIPTED_DEFEAT, StoryPhase.VICTORY, StoryPhase.SURVIVAL_COMPLETE, StoryPhase.SECOND_DEFEAT, StoryPhase.COLLECTOR_FORMATION)
@@ -234,8 +237,13 @@ class StoryMode:
             core.is_adaptive_boss = True
             core.is_story_invulnerable = True
             core.health = core.max_health = 9
-            core.speed = 130
-            core.fire_timer = 0.5 + len(self.returning_cores) * 0.35 # some fine tuning
+            core.speed = (235, 185, 210)[len(self.returning_cores)]
+            core.shield_flash = 0.0
+            core.movement_timer = (0.75, 0.0, 1.35)[len(self.returning_cores)]
+            core.movement_target = core.position.copy()
+            core.ramming = False
+            core.ram_windup = 0.0
+            core.fire_timer = 0.9 + len(self.returning_cores) * 0.45 # some fine tuning
             core.rect.size = (64,64)
             core.rect.center = core.position
 
@@ -250,6 +258,7 @@ class StoryMode:
 
         self.phase  = StoryPhase.RETURNING_CORES
         self.phase_time = 0.0
+        self.returning_volley_fired = False
 
         self.departing_ships.clear()
 
@@ -265,6 +274,14 @@ class StoryMode:
         effects.announce_objective("CRITICAL THREAT", 'Three Adaptive Cores approaching')
         audio.play('boss_spawn')
 
+    def track_returning_player(self, dt, player):
+        if dt > 0:
+            velocity = (player.position - self.last_player_position) / dt
+            if velocity.length_squared() > player.speed ** 2:
+                velocity.scale_to_length(player.speed)
+            self.player_velocity = self.player_velocity.lerp(velocity, min(1, dt * 12))
+        self.last_player_position.update(player.position)
+
     def update_returning_core(self,core,dt,player,firing):
         if self.phase != StoryPhase.RETURNING_CORES:
             return
@@ -273,13 +290,97 @@ class StoryMode:
         core.fire_timer -= dt
         ai.record_player(dt,player.position,firing,core.health,core.max_health)
 
-        movement_phase = self.returning_cores.index(core) + 1
-        core.update(dt,player.position,ai.strategy, movement_phase)
+        index = self.returning_cores.index(core)
+        core.shield_flash = max(0.0, core.shield_flash - dt)
+        if core.ram_windup > 0:
+            core.ram_windup = max(0.0, core.ram_windup - dt)
+            if core.ram_windup > 0:
+                return
+        core.movement_timer -= dt
+        if core.movement_timer <= 0:
+            self.choose_returning_maneuver(core, index, player, ai.strategy)
+            if core.ram_windup > 0:
+                return
+
+        target = core.movement_target
+        away = core.position - player.position
+        if index == 1 and 0 < away.length_squared() < 125 ** 2:
+            target = player.position + away.normalize() * 145
+            target.x = max(36, min(WIDTH - 36, target.x))
+            target.y = max(36, min(HEIGHT - 36, target.y))
+        speed = core.speed
+        if core.ramming:
+            core.speed *= 1.10
+        core.update(min(dt, core.position.distance_to(target) / core.speed), target)
+        core.speed = speed
+
+    def choose_returning_maneuver(self, core, index, player, strategy):
+        if index == 1:
+            positions = (pygame.Vector2(WIDTH / 2, 95),
+                         pygame.Vector2(WIDTH - 95, HEIGHT / 2),
+                         pygame.Vector2(WIDTH / 2, HEIGHT - 95),
+                         pygame.Vector2(95, HEIGHT / 2))
+            core.movement_target = min(positions, key=lambda point: (
+                abs(point.distance_to(player.position) - 235)
+                + point.distance_to(core.position) * 0.25
+                - min(point.distance_to(other.position) for other in self.returning_cores if other is not core) * 0.35
+            ))
+            core.movement_timer = 1.1
+        elif core.ramming:
+            core.ramming = False
+            core.movement_timer = (2.15 if index == 0 else 2.40)
+            x = WIDTH * (0.22 if index == 0 else 0.78)
+            y = max(95, min(HEIGHT - 95, player.position.y + (95 if index == 0 else -95)))
+            core.movement_target.update(x, y)
+        elif any(other.ramming for other in self.returning_cores if other is not core):
+            core.movement_timer = 0.15
+        else:
+            lead = 0.12 if index == 0 else (0.42 if strategy == 'MOBILE' else 0.30)
+            target = player.position + self.player_velocity * lead
+            approach = target - core.position
+            if approach.length_squared() > 0:
+                target += approach.normalize() * 30
+            target.x = max(36, min(WIDTH - 36, target.x))
+            target.y = max(36, min(HEIGHT - 36, target.y))
+            core.movement_target = target
+            core.movement_timer = min(1.55, max(0.45, core.position.distance_to(target) / (core.speed * 1.10)))
+            core.ram_windup = 0.55
+            core.ramming = True
+
+    def aim_returning_core_shot(self, core, player, speed):
+        offset = player.position - core.position
+        velocity = self.player_velocity
+        closing = speed * speed - velocity.length_squared()
+        lead = offset.length() / speed
+        if closing > 0:
+            projection = offset.dot(velocity)
+            lead = (projection + math.sqrt(projection ** 2 + closing * offset.length_squared())) / closing
+        target = player.position + velocity * min(0.52, lead)
+        target.x = max(0, min(WIDTH, target.x))
+        target.y = max(0, min(HEIGHT, target.y))
+        return target - core.position
+
+    def draw_returning_core_defences(self, surface, core, player, bullets):
+        if core.ram_windup > 0:
+            pygame.draw.line(surface, (185, 75, 94), core.position, core.movement_target, 2)
+            pygame.draw.circle(surface, (255, 135, 138), core.movement_target, 7, 2)
+        incoming = any(
+            bullet.position.distance_squared_to(core.position) <= 96 ** 2
+            and bullet.direction.dot(core.position - bullet.position) > 0
+            for bullet in bullets
+        )
+        if core.shield_flash > 0 or incoming:
+            draw_shield(surface, core.rect.center, self.phase_time, core.shield_flash)
+        charge_start = self.retreating_attack_duration - self.returning_charge_duration
+        if self.phase_time >= charge_start:
+            progress = min(1.0, (self.phase_time - charge_start) / self.returning_charge_duration)
+            draw_gun_charge(surface, core.position, player.position, progress)
 
     def begin_second_defeat(self,player,bullets,enemy_bullets,effects,audio):
         if self.phase != StoryPhase.RETURNING_CORES:
             return
 
+        self.returning_volley_fired = self.phase_time >= self.retreating_attack_duration and player.health > 0
         self.phase = StoryPhase.SECOND_DEFEAT
         self.phase_time = 0.0
 
@@ -298,6 +399,8 @@ class StoryMode:
 
         effects.shake = 12
         effects.hit_overlay_timer = 0.28
+        if self.returning_volley_fired:
+            audio.play('core_shot')
         audio.play('enemy_down')
     def update_boss(self, dt, player, firing, audio):
         if self.phase == StoryPhase.VICTORY:
@@ -661,6 +764,12 @@ class StoryMode:
             self.hud.draw_departure(surface, self.departing_ships, self.phase_time)
             self.draw_explosion(surface, self.ship.centre, self.phase_time)
         elif self.phase == StoryPhase.SECOND_DEFEAT:
+            if self.returning_volley_fired and self.phase_time < 0.26:
+                width = max(2, round(16 * (1 - self.phase_time / 0.26)))
+                for core in self.returning_cores:
+                    pygame.draw.line(surface, (90, 20, 45), core.position, self.ship.centre, width + 6)
+                    pygame.draw.line(surface, (255, 138, 78), core.position, self.ship.centre, width)
+                    pygame.draw.line(surface, (255, 245, 191), core.position, self.ship.centre, max(1, width // 3))
             self.draw_explosion(surface, self.ship.centre, self.phase_time)
         elif self.phase == StoryPhase.SURVIVAL_COMPLETE and self.departing_ships:
             self.hud.draw_departure(surface, self.departing_ships, self.phase_time)

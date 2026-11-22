@@ -489,10 +489,10 @@ while running:
             dt = min(dt, story.survival_duration - story.phase_time)
         story.advance(dt, effects, audio)
 
-        if story.phase == StoryPhase.RETURNING_CORES and story.phase_time >= story.retreating_attack_duration:
-            story.begin_second_defeat(player,bullets,enemy_bullets,effects, audio)
         if story.phase == StoryPhase.SURVIVAL_COMPLETE and story.phase_time >= story.survival_retreat_duration:
             story.start_returning_cores(enemies,bullets,enemy_bullets,ship_sprites,effects,audio)
+            story.last_player_position.update(player.position)
+            story.player_velocity.update(0, 0)
         if story.phase == StoryPhase.RECOVERY_COMPLETE:
             story.start_final_boss(enemies, bullets, enemy_bullets, audio, survival=True)
             story.last_player_position.update(player.position)
@@ -506,7 +506,7 @@ while running:
         story.update_objective(dt, player)
         story.spawn_recovery_enemies(enemies, ship_sprites, player,dt, effects, audio)
 
-        minimum_health = 0 if story.phase in (StoryPhase.OPENING, StoryPhase.RECOVERY, StoryPhase.FINAL_BOSS, StoryPhase.SURVIVAL) else 1
+        minimum_health = 0 if story.phase in (StoryPhase.OPENING, StoryPhase.RECOVERY, StoryPhase.FINAL_BOSS, StoryPhase.SURVIVAL, StoryPhase.RETURNING_CORES) else 1
 
     controls_enabled = story is None or story.controls_enabled
 
@@ -660,6 +660,9 @@ while running:
 
             enemies.append(new_enemy)
 
+    if story and story.phase == StoryPhase.RETURNING_CORES:
+        story.track_returning_player(dt, player)
+
     for enemy in enemies:
         if story and enemy is story.boss:
             story.update_boss(dt, player, pygame.mouse.get_pressed()[0], audio)
@@ -702,7 +705,8 @@ while running:
                     core_index = story.returning_cores.index(enemy)
                     spread = (-12,0,12) if core_index == 1 else (0,) #firing 3 bullets, at the enemy, and to either direction. for other cores, one bullet directly towards the player
                     # we do 0, so that it's a tuple
-                    speed = (285,265,340)[core_index] #tuple indexing
+                    speed = (285,255,305)[core_index] #tuple indexing
+                    direction = story.aim_returning_core_shot(enemy, player, speed)
 
                     for angle in spread:
                         new_bullet = Bullet(enemy.position, direction.rotate(angle))
@@ -710,7 +714,7 @@ while running:
                         enemy_bullets.append(new_bullet)
 
                     audio.play('core_shot')
-                    enemy.fire_timer = (1.15,1.65,0.8)[core_index]
+                    enemy.fire_timer = (1.60,2.40,1.30)[core_index]
     separate_enemies(enemies, WIDTH, HEIGHT)
 
     #shooting logic
@@ -722,6 +726,9 @@ while running:
     mouse_buttons = pygame.mouse.get_pressed()
     shot_timer = max(0, shot_timer - dt) #decreases the timer and ensures that the value doesnt become negative
     damage_timer = max(0, damage_timer - dt)
+    damage_cooldown = difficulty['damage_cooldown']
+    if story and story.phase == StoryPhase.RETURNING_CORES:
+        damage_cooldown = story.returning_damage_cooldown
 
     # ENEMY PROJECTILES
     for bullet in enemy_bullets:
@@ -816,14 +823,14 @@ while running:
                 if bullet.is_opening_core_shot:
                     damage = previous_health - player.health
                 else:
-                    damage_timer = difficulty['damage_cooldown']
+                    damage_timer = damage_cooldown
                 effects.player_hit(player.position, damage)
                 audio.play("player_hit")
 
         elif bullet.is_off_screen():
             enemy_bullets.remove(bullet)
     if player.health <= 0:
-        if story is None or story.phase != StoryPhase.OPENING:
+        if story is None or story.phase not in (StoryPhase.OPENING, StoryPhase.RETURNING_CORES):
             continue
         controls_enabled = False
 
@@ -840,7 +847,9 @@ while running:
 
                 if getattr(enemy, 'is_story_invulnerable', False):
                     effects.sparks(bullet.position, 8, (140,235,255))
-                    audio.play('core_shield')
+                    if enemy.shield_flash <= 0:
+                        audio.play('core_shield')
+                    enemy.shield_flash = 0.22
                     break
 
                 if story and enemy is story.boss and (story.phase != StoryPhase.SURVIVAL or story.shielded):
@@ -911,18 +920,20 @@ while running:
                         damage = 3
 
                     player.health = max(minimum_health, player.health - damage)
-                    damage_timer = difficulty['damage_cooldown']
+                    damage_timer = damage_cooldown
                     effects.player_hit(player.position, damage)
                     audio.play("player_hit")
 
             elif damage_timer <= 0 and player.health > 0 and (story is None or story.phase_cloak_timer <= 0):
-                if active_malfunction == 'SHIELD_MALFUNCTION':
+                if story and story.phase == StoryPhase.RETURNING_CORES and enemy in story.returning_cores:
+                    damage = 3
+                elif active_malfunction == 'SHIELD_MALFUNCTION':
                     damage = 2
                 else:
                     damage = 1
 
                 player.health = max(minimum_health, player.health - damage)
-                damage_timer = difficulty['damage_cooldown']
+                damage_timer = damage_cooldown
                 effects.player_hit(player.position, damage)
                 audio.play("player_hit")
 
@@ -931,6 +942,10 @@ while running:
     if story and story.finish_opening(player, enemies, bullets, enemy_bullets, effects, audio):
         ammo = max_ammo
         player.health = current_health_limit
+
+    if story and story.phase == StoryPhase.RETURNING_CORES:
+        if player.health <= 0 or story.phase_time >= story.retreating_attack_duration:
+            story.begin_second_defeat(player,bullets,enemy_bullets,effects, audio)
 
     if story and story.phase == StoryPhase.SURVIVAL and player.health > 0:
         if not enemies or story.phase_time >= story.survival_duration:
@@ -964,10 +979,13 @@ while running:
 
     for enemy in enemies:
         use_core_hud = story and enemy is story.boss and story.phase in (StoryPhase.SURVIVAL, StoryPhase.FINAL_BOSS)
-        ship_sprites.draw_enemy(world_surface, enemy, show_health=not use_core_hud)
+        returning_core = story and story.phase == StoryPhase.RETURNING_CORES and enemy in story.returning_cores
+        ship_sprites.draw_enemy(world_surface, enemy, show_health=not (use_core_hud or returning_core))
         effects.draw_enemy_flash(world_surface, enemy)
         if story and enemy is story.boss:
             story.draw_boss_defences(world_surface)
+        elif returning_core:
+            story.draw_returning_core_defences(world_surface, enemy, player, bullets)
 
     for bullet in bullets:
         bullet.draw(world_surface)

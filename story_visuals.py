@@ -174,6 +174,15 @@ class StoryHUD:
                 else:
                     detail = 'Core down. Stay alive.'
                 accent = amber
+        elif phase in ('RETURNING_CORES', 'SECOND_DEFEAT'):
+            heading = 'FINAL ENCOUNTER   /   CORE AMBUSH'
+            if phase == 'SECOND_DEFEAT':
+                title, detail = 'Hull breached', 'Ship systems offline'
+            elif story.phase_time >= story.retreating_attack_duration - story.returning_charge_duration:
+                title, detail = 'Volley charging', 'Three shielded Cores'
+            else:
+                title, detail = 'Evade the Cores', 'Three shielded Cores'
+            accent = (255, 105, 130)
         elif final_boss:
             heading = 'FINAL ENCOUNTER   /   SYSTEM CORE'
             if phase == 'VICTORY':
