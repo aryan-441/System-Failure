@@ -97,11 +97,14 @@ class ShipSprites:
 
         enemy.max_health = enemy.health
 
-    def draw_enemy(self, screen, enemy):
+    def draw_enemy(self, screen, enemy, show_health=True):
         image = enemy.ship_image
 
         if image is None:
-            enemy.draw(screen)
+            if show_health:
+                enemy.draw(screen)
+            else:
+                pygame.draw.rect(screen, (255, 0, 0), enemy.rect)
             return
 
         scale = 1
@@ -124,6 +127,9 @@ class ShipSprites:
         if getattr(enemy, 'is_story_miniboss', False):
             pygame.draw.circle(screen, enemy.miniboss_color, sprite_rect.center,
                                max(sprite_rect.width, sprite_rect.height) // 2 + 5, 2)
+
+        if not show_health:
+            return
 
         bar_width = 12
         gap = 3

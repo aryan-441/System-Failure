@@ -85,6 +85,7 @@ STORY_DIFFICULTIES = {
         'wave_active_limits': (2, 3, 3, 3, 4, 4),
         'wave_spawn_intervals': (1.35, 1.30, 1.25, 1.20, 1.15, 1.10),
         'opening_rapid_shot_interval': 0.65,
+        'survival_boss_health': 12,
         'survival_spawn_interval_multiplier': 1.35,
         'survival_active_limit_reduction': 2,
     },
@@ -93,6 +94,7 @@ STORY_DIFFICULTIES = {
         'wave_active_limits': (3, 3, 4, 4, 5, 6),
         'wave_spawn_intervals': (1.10, 1.00, 0.90, 0.85, 0.80, 0.75),
         'opening_rapid_shot_interval': 0.40,
+        'survival_boss_health': 14,
         'survival_spawn_interval_multiplier': 1.15,
         'survival_active_limit_reduction': 1,
     },
@@ -101,6 +103,7 @@ STORY_DIFFICULTIES = {
         'wave_active_limits': (3, 4, 5, 5, 6, 7),
         'wave_spawn_intervals': (0.95, 0.85, 0.75, 0.70, 0.65, 0.60),
         'opening_rapid_shot_interval': 0.25,
+        'survival_boss_health': 16,
         'survival_spawn_interval_multiplier': 1.12,
         'survival_active_limit_reduction': 1,
     }

@@ -81,6 +81,8 @@ class StoryMode:
         self.ship = ModularShip(pygame.transform.scale(image, size), player.position)
         self.debris_source = pygame.transform.scale(image, size)
         self.explosion_frames = load_explosion_frames()
+        self.hull_loss_time = 0.0
+        self.hull_loss_duration = max(1.15, len(self.explosion_frames) * self.explosion_frame_time)
         player.rect.size = self.assembled_hitbox
         player.rect.center = player.position
 
@@ -301,7 +303,7 @@ class StoryMode:
         self.boss.rect.size = (84, 84)
         self.boss.rect.center = self.boss.position
         self.boss.speed = 78
-        self.boss.health = self.boss.max_health = 16 if survival else 32
+        self.boss.health = self.boss.max_health = self.difficulty_settings['survival_boss_health'] if survival else 32
         self.shielded = survival
         self.repair_timer = 0.0
         self.boss.is_boss = True
@@ -564,12 +566,26 @@ class StoryMode:
                 pygame.draw.polygon(surface, (235, 250, 255), points, 1)
         if self.phase == StoryPhase.SCRIPTED_DEFEAT:
             self.hud.draw_departure(surface, self.departing_ships, self.phase_time)
-            frame = int(self.phase_time / self.explosion_frame_time)
-            if frame < len(self.explosion_frames):
-                image = self.explosion_frames[frame]
-                surface.blit(image, image.get_rect(center=self.ship.centre))
+            self.draw_explosion(surface, self.ship.centre, self.phase_time)
         elif self.phase == StoryPhase.SURVIVAL_COMPLETE and self.departing_ships:
             self.hud.draw_departure(surface, self.departing_ships, self.phase_time)
+
+    def draw_explosion(self, surface, position, age):
+        frame = int(age / self.explosion_frame_time)
+        if frame < len(self.explosion_frames):
+            image = self.explosion_frames[frame]
+            surface.blit(image, image.get_rect(center=position))
+
+    def animate_hull_loss(self, surface, player, dt, effects, audio):
+        if self.hull_loss_time == 0.0:
+            self.wreckage = scatter_wreckage(self.debris_source, player.position, self.ship.angle)
+            effects.sparks(player.position, 32, (255, 170, 70))
+            audio.play('enemy_down')
+        for fragment in self.wreckage:
+            fragment.update(dt)
+            fragment.draw(surface)
+        self.draw_explosion(surface, player.position, self.hull_loss_time)
+        self.hull_loss_time += dt
 
     def resource_limits(self, health_limit, ammo_limit):
         if 'REINFORCED_ARMOUR' in self.recovered_upgrades:
@@ -636,7 +652,6 @@ class StoryMode:
             self.recovery_step = RecoveryStep.PICKUP
             self.wave_clear_timer = 2.0
             audio.play('wave_clear')
-            return True
 
     def update_pickup(self,player, audio):
         if self.phase != StoryPhase.RECOVERY:
@@ -657,8 +672,11 @@ class StoryMode:
                 audio.play('part_pickup')
                 self.ship.recover_part(part_id)
                 self.recovery_step = RecoveryStep.RETURNING
+                return True
 
     def retry_wave(self):
+        self.hull_loss_time = 0.0
+        self.wreckage.clear()
         if self.phase == StoryPhase.SURVIVAL:
             self.phase = StoryPhase.RECOVERY_COMPLETE
             self.phase_time = 0.0

@@ -311,7 +311,7 @@ while running:
             if story:
                 if event.key == pygame.K_ESCAPE:
                     running = False
-                if event.key == pygame.K_r and player.health <= 0:
+                if event.key == pygame.K_r and player.health <= 0 and game_over_sound_played:
                     was_final_boss = story.phase in (StoryPhase.FINAL_BOSS, StoryPhase.SURVIVAL)
                     story.retry_wave()
                     player.health, ammo = story.resource_limits(difficulty['player_health'], max_ammo)
@@ -426,12 +426,18 @@ while running:
         break
 
     if player.health <= 0:
+        screen.fill(BG_COLOUR)
+        background.draw(screen)
+
+        if story and story.hull_loss_time < story.hull_loss_duration:
+            story.animate_hull_loss(screen, player, dt, effects, audio)
+            effects.draw(screen)
+            pygame.display.flip()
+            continue
+
         if not game_over_sound_played:
             audio.play("game_over")
             game_over_sound_played = True
-
-        screen.fill(BG_COLOUR)
-        background.draw(screen)
 
         if story:
             title = game_over_font.render('HULL LOST', True, (255, 105, 115))
@@ -817,8 +823,7 @@ while running:
 
                 if enemy.take_damage(1):
                     if story:
-                        if story.record_kill(enemy, audio):
-                            player.health = min(current_health_limit, player.health + 2)
+                        story.record_kill(enemy, audio)
                         story.record_final_kill(enemy, audio, effects)
                         if story.recovery_step == RecoveryStep.PICKUP:
                             enemy_bullets.clear()
@@ -902,15 +907,15 @@ while running:
         if story.phase_cloak_timer > 0:
             draw_shield(world_surface, player.position, story.phase_time, 0.15)
         story.update_ship(player, world_mous_pos, dt, effects)
-        story.update_pickup(player, audio)
+        if story.update_pickup(player, audio):
+            player.health = min(current_health_limit, player.health + 2)
+            ammo = min(current_max_ammo, ammo + 3)
 
         if story.pending_rewards > 0:
             audio.play('part_attached')
-            reward_count = story.pending_rewards
             story.pending_rewards = 0
 
             current_health_limit, current_max_ammo = story.resource_limits(difficulty['player_health'], max_ammo)
-            ammo = min(current_max_ammo, ammo + 3 * reward_count)
             enemy_bullets.clear()
 
         story.draw_ship(world_surface)
@@ -918,7 +923,8 @@ while running:
         ship_sprites.draw_player(world_surface, player, world_mous_pos)
 
     for enemy in enemies:
-        ship_sprites.draw_enemy(world_surface, enemy)
+        use_core_hud = story and enemy is story.boss and story.phase in (StoryPhase.SURVIVAL, StoryPhase.FINAL_BOSS)
+        ship_sprites.draw_enemy(world_surface, enemy, show_health=not use_core_hud)
         effects.draw_enemy_flash(world_surface, enemy)
         if story and enemy is story.boss:
             story.draw_boss_defences(world_surface)
