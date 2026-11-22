@@ -3,14 +3,14 @@ DIFFICULTIES = {
 
     'easy': {
         'starting_enemies': 1,
-        'max_enemies': 6,
+        'max_enemies': 5,
 
-        'single_interval': 2.3,
-        'double_interval': 3.5,
+        'single_interval': 2.30,
+        'double_interval': 3.50,
         'spawn_weights': [90, 10],
 
-        'min_single_interval': 1.9,
-        'min_double_interval': 2.9,
+        'min_single_interval': 1.95,
+        'min_double_interval': 3.00,
         'difficulty_increase': 0.05,
 
         'player_health': 7,
@@ -25,7 +25,7 @@ DIFFICULTIES = {
 
     'medium': {
         'starting_enemies': 2,
-        'max_enemies': 7,
+        'max_enemies': 6,
 
         'single_interval': 2.0,
         'double_interval': 3.2,
@@ -46,16 +46,16 @@ DIFFICULTIES = {
     },
 
     'hard': {
-        'starting_enemies': 4,
-        'max_enemies': 9,
+        'starting_enemies': 2,
+        'max_enemies': 8,
 
-        'single_interval': 1.30,
-        'double_interval': 2.10,
-        'spawn_weights': [80, 20],
+        'single_interval': 1.50,
+        'double_interval': 2.45,
+        'spawn_weights': [83, 17],
 
-        'min_single_interval': 0.90,
-        'min_double_interval': 1.50,
-        'difficulty_increase': 0.10,
+        'min_single_interval': 1.10,
+        'min_double_interval': 1.85,
+        'difficulty_increase': 0.08,
 
         'player_health': 5,
         'starting_ammo': 16,
