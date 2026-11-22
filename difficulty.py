@@ -21,9 +21,6 @@ DIFFICULTIES = {
 
         'thruster_multiplier': 0.80,
         'cooling_rate': 14,
-
-        'tank_cooldown': 60,
-        'tank_chance': 0.20
     },
 
     'medium': {
@@ -46,22 +43,19 @@ DIFFICULTIES = {
 
         'thruster_multiplier': 0.70,
         'cooling_rate': 12,
-
-        'tank_cooldown': 50,
-        'tank_chance': 0.25
     },
 
     'hard': {
-        'starting_enemies': 3,
-        'max_enemies': 8,
+        'starting_enemies': 4,
+        'max_enemies': 9,
 
-        'single_interval': 1.65,
-        'double_interval': 2.75,
-        'spawn_weights': [85, 15],
+        'single_interval': 1.30,
+        'double_interval': 2.10,
+        'spawn_weights': [80, 20],
 
-        'min_single_interval': 1.30,
-        'min_double_interval': 2.25,
-        'difficulty_increase': 0.05,
+        'min_single_interval': 0.90,
+        'min_double_interval': 1.50,
+        'difficulty_increase': 0.10,
 
         'player_health': 5,
         'starting_ammo': 16,
@@ -71,13 +65,12 @@ DIFFICULTIES = {
 
         'thruster_multiplier': 0.65,
         'cooling_rate': 10,
-
-        'tank_cooldown': 40,
-        'tank_chance': 0.30
     }
 }
 
 DEFAULT_DIFFICULTY = 'medium'
+ARCADE_TANK_COOLDOWN = 50
+ARCADE_TANK_CHANCE = 0.25
 
 STORY_DIFFICULTIES = {
     'easy': {

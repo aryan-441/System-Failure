@@ -7,7 +7,7 @@ from settings import WIDTH, HEIGHT, FPS, PLAYER_SPEED, ENEMY_SPEED, BULLET_SPEED
 from player import Player
 from bullet import Bullet
 from enemy import Enemy
-from enemy_spawner import EnemySpawner
+from enemy_spawner import EnemySpawner, choose_enemy_type
 from highscore import load_high_score, get_high_score
 from background import SpaceBackground
 from ship_sprites import ShipSprites
@@ -15,7 +15,7 @@ from rounds import RoundManager
 from effects import ArcadeEffects
 from arcade_audio import ArcadeAudio
 from enemy_spacing import separate_enemies
-from difficulty import DIFFICULTIES, DEFAULT_DIFFICULTY
+from difficulty import DIFFICULTIES, DEFAULT_DIFFICULTY, ARCADE_TANK_COOLDOWN, ARCADE_TANK_CHANCE
 from story_mode import StoryMode, StoryPhase, RecoveryStep
 from story_visuals import draw_shield
 
@@ -157,15 +157,15 @@ if story_selected:
 
 difficulty = DIFFICULTIES[difficulty_name]
 
-ship_sprites.boss_chance = difficulty['tank_chance']
+ship_sprites.boss_chance = ARCADE_TANK_CHANCE
 
 
 def create_starting_enemies():
-    positions = [(150, 150), (800, 150), (150, 400)]
+    positions = [(150, 150), (800, 150), (150, 400), (800, 400)]
     starting_enemies = []
 
     for x, y in positions[:difficulty['starting_enemies']]:
-        enemy = Enemy(x, y)
+        enemy = Enemy(x, y, choose_enemy_type())
         ship_sprites.prepare_enemy(enemy, allow_boss=False)
         starting_enemies.append(enemy)
 
@@ -227,7 +227,6 @@ target_font = pygame.font.Font(None,22)
 
 # ENEMY SPAWNER
 spawner = create_spawner()
-boss_spawn_cooldown = difficulty['tank_cooldown']
 last_boss_spawn = 0
 max_enemies = difficulty['max_enemies']
 
@@ -375,7 +374,6 @@ while running:
                     difficulty_name = DEFAULT_DIFFICULTY
 
                 difficulty = DIFFICULTIES[difficulty_name]
-                ship_sprites.boss_chance = difficulty['tank_chance']
 
                 player = Player(WIDTH/2, HEIGHT/2)
                 player.health = difficulty['player_health']
@@ -383,7 +381,6 @@ while running:
                 enemies = story.opening_enemies(ship_sprites) if story else create_starting_enemies()
 
                 max_enemies = difficulty['max_enemies']
-                boss_spawn_cooldown = difficulty['tank_cooldown']
                 max_ammo = 30 if story else difficulty['max_ammo']
                 ammo_per_kill = difficulty['ammo_per_kill']
                 cooling_rate = difficulty['cooling_rate']
@@ -640,7 +637,7 @@ while running:
     spawn_ready = story is None and spawner.update(dt, malfunction != 'NONE') 
     if len(enemies) < max_enemies and spawn_ready:
             new_enemy = spawner.spawn()
-            allow_boss = game_time >= 40 and game_time - last_boss_spawn >= boss_spawn_cooldown
+            allow_boss = game_time >= 40 and game_time - last_boss_spawn >= ARCADE_TANK_COOLDOWN
             '''tank_alive = False
             for enemy in enemies:
                 if enemy.is_boss:
@@ -681,6 +678,7 @@ while running:
                         new_bullet = Bullet(enemy.position, direction.rotate(angle))
                         new_bullet.speed = story.boss_bullet_speed if story_shot else (285 if enemy.enemy_type == 'siege_walker' else 250)
                         new_bullet.is_opening_core_shot = opening_core_shot
+                        new_bullet.is_ranger_shot = enemy.enemy_type == 'ranger' and not story_shot
                         enemy_bullets.append(new_bullet)
                     if story_shot or story is None:
                         audio.play('core_shot')
@@ -700,33 +698,8 @@ while running:
     damage_timer = max(0, damage_timer - dt)
 
     # ENEMY PROJECTILES
-    for bullet in enemy_bullets[:]:
+    for bullet in enemy_bullets:
         bullet.update(dt)
-
-        if bullet.overlaps(player.rect):
-            enemy_bullets.remove(bullet)
-
-            if (bullet.is_opening_core_shot or damage_timer <= 0) and player.health > 0 and (story is None or story.phase_cloak_timer <= 0):
-                damage = 1
-
-                if active_malfunction == 'SHIELD_MALFUNCTION':
-                    damage = 2
-
-                previous_health = player.health
-                player.health = max(minimum_health, player.health - damage)
-                if bullet.is_opening_core_shot:
-                    damage = previous_health - player.health
-                else:
-                    damage_timer = difficulty['damage_cooldown']
-                effects.player_hit(player.position, damage)
-                audio.play("player_hit")
-
-        elif bullet.is_off_screen():
-            enemy_bullets.remove(bullet)
-    if player.health <= 0:
-        if story is None or story.phase != StoryPhase.OPENING:
-            continue
-        controls_enabled = False
 
     if malfunction == 'WEAPON_OVERHEATING' or 'WEAPON_OVERHEATING' in story_debuffs:
         weapon_heat = max(0, weapon_heat - cooling_rate * dt)
@@ -792,6 +765,41 @@ while running:
     #aim_direction = pygame.Vector2(mouse_pos) - player.position
     for bullet in bullets[:]:   #slicing to loop over a copy
         bullet.update(dt)
+
+    for player_bullet in bullets[:]:
+        for enemy_bullet in enemy_bullets[:]:
+            if enemy_bullet.is_ranger_shot and player_bullet.intersects_shot(enemy_bullet):
+                bullets.remove(player_bullet)
+                enemy_bullets.remove(enemy_bullet)
+                effects.sparks(enemy_bullet.position, 12, (255, 150, 80))
+                audio.play('enemy_down')
+                break
+
+    for bullet in enemy_bullets[:]:
+        if bullet.overlaps(player.rect):
+            enemy_bullets.remove(bullet)
+
+            if (bullet.is_opening_core_shot or damage_timer <= 0) and player.health > 0 and (story is None or story.phase_cloak_timer <= 0):
+                damage = 1
+
+                if active_malfunction == 'SHIELD_MALFUNCTION':
+                    damage = 2
+
+                previous_health = player.health
+                player.health = max(minimum_health, player.health - damage)
+                if bullet.is_opening_core_shot:
+                    damage = previous_health - player.health
+                else:
+                    damage_timer = difficulty['damage_cooldown']
+                effects.player_hit(player.position, damage)
+                audio.play("player_hit")
+
+        elif bullet.is_off_screen():
+            enemy_bullets.remove(bullet)
+    if player.health <= 0:
+        if story is None or story.phase != StoryPhase.OPENING:
+            continue
+        controls_enabled = False
 
     for bullet in bullets[:]:
         if bullet not in bullets:

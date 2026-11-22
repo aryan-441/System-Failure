@@ -10,6 +10,7 @@ class Bullet:
         self.hit_targets = set()
         self.pierce_remaining = 0
         self.is_opening_core_shot = False
+        self.is_ranger_shot = False
 
         self.rect = pygame.Rect(0,0,8,8)
         self.rect.center = self.position
@@ -35,5 +36,19 @@ class Bullet:
     def overlaps(self, rect):
         return self.previous_rect.colliderect(rect) or self.rect.colliderect(rect)
 
+    def intersects_shot(self,other):
+        start = (self.previous_rect.centerx - other.previous_rect.centerx, self.previous_rect.centery - other.previous_rect.centery)
+
+        end = (
+            self.rect.centerx - other.rect.centerx,
+            self.rect.centery - other.rect.centery
+        )
+        
+        hitbox = pygame.Rect(
+            0,0,self.rect.width + other.rect.width, self.rect.height + other.rect.height
+        )
+        hitbox.center = (0,0)
+        return bool(hitbox.clipline(start, end))
+    
     def is_off_screen(self):
         return not pygame.Rect(0, 0, WIDTH, HEIGHT).colliderect(self.rect)

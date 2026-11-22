@@ -4,6 +4,14 @@ from enemy import Enemy
 from settings import WIDTH, HEIGHT
 
 
+def choose_enemy_type():
+    return random.choices(
+        ['normal', 'interceptor', 'ranger', 'bomber'],
+        weights=[50, 20, 20, 10],
+        k=1
+    )[0]
+
+
 def create_random_enemy():
 
     side = random.choice(["top", "bottom", "left", "right"])
@@ -24,13 +32,7 @@ def create_random_enemy():
         x = WIDTH - 20
         y = random.randint(20, HEIGHT - 20)
 
-    enemy_type = random.choices(
-        ['normal', 'interceptor', 'ranger', 'bomber'],
-        weights=[58, 18, 16, 8],
-        k=1
-    )[0]
-
-    return Enemy(x, y, enemy_type)
+    return Enemy(x, y, choose_enemy_type())
 
 
 class EnemySpawner:
