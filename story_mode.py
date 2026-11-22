@@ -11,7 +11,6 @@ from enemy import Enemy
 from settings import WIDTH, HEIGHT
 from ship_parts import ModularShip, load_explosion_frames
 
-
 class StoryPhase(Enum):
     OPENING = auto()
     SCRIPTED_DEFEAT = auto()
@@ -21,6 +20,9 @@ class StoryPhase(Enum):
     VICTORY = auto()
     SURVIVAL = auto()
     SURVIVAL_COMPLETE = auto()
+    RETURNING_CORES = auto()
+    SECOND_DEFEAT = auto()
+    COLLECTOR_FORMATION = auto()
 
 class RecoveryStep(Enum):
     OBJECTIVE = auto()
@@ -41,6 +43,7 @@ class StoryMode:
     final_charged_shot_interval = 0.95
     survival_duration = 35.0
     survival_retreat_duration = 2.65
+    retreating_attack_duration = 15.0
     survival_shield_cycle = 6.0
     survival_shield_duration = 1.0
     defeat_duration = 2.15
@@ -175,9 +178,13 @@ class StoryMode:
         self.rift_drive_cooldown = 0.0
         self.phase_cloak_timer = 0.0
         self.phase_cloak_cooldown = 0.0
+
+        self.returning_cores = []
+        self.returning_core_ai ={}
     @property #decorator- allows controls_enabled to behave like an attribute instead of a method
     def controls_enabled(self):
-        return self.phase not in (StoryPhase.SCRIPTED_DEFEAT, StoryPhase.VICTORY, StoryPhase.SURVIVAL_COMPLETE)
+        return self.phase not in (StoryPhase.SCRIPTED_DEFEAT, StoryPhase.VICTORY, StoryPhase.SURVIVAL_COMPLETE, StoryPhase.SECOND_DEFEAT, StoryPhase.COLLECTOR_FORMATION)
+    
 
     def advance(self, dt, effects, audio):
         self.phase_time += dt
@@ -194,6 +201,10 @@ class StoryMode:
             self.departing_ships.clear()
             self.phase = StoryPhase.RECOVERY
             self.phase_time = 0.0
+
+        if self.phase == StoryPhase.SECOND_DEFEAT and self.phase_time >= self.defeat_duration:
+            self.phase = StoryPhase.COLLECTOR_FORMATION
+            self.phase = 0.0
         if self.phase == StoryPhase.SURVIVAL_COMPLETE and self.phase_time >= self.survival_retreat_duration:
             self.departing_ships.clear()
 
@@ -206,6 +217,88 @@ class StoryMode:
             enemies.append(escort)
         return enemies
 
+    def create_returning_cores(self,ship_sprites):
+        self.returning_cores.clear()
+        self.returning_core_ai.clear()
+
+        positions = [
+            (160,90),
+            (WIDTH // 2, 70),
+            (WIDTH - 160,90),
+        ]
+
+        for x,y in positions:
+            core = Enemy(x,y,'adaptive_core')
+            core.ship_image = ship_sprites.adaptive_image
+            core.is_boss = True
+            core.is_adaptive_boss = True
+            core.is_story_invulnerable = True
+            core.health = core.max_health = 9
+            core.speed = 130
+            core.fire_timer = 0.5 + len(self.returning_cores) * 0.35 # some fine tuning
+            core.rect.size = (64,64)
+            core.rect.center = core.position
+
+            self.returning_cores.append(core)
+            self.returning_core_ai[core] = BossAI()
+
+        return self.returning_cores
+
+    def start_returning_cores(self, enemies, bullets, enemy_bullets, ship_sprites, effects, audio):
+        if self.phase != StoryPhase.SURVIVAL_COMPLETE:
+            return
+
+        self.pahse  = StoryPhase.RETURNING_CORES
+        self.phase_time = 0.0
+
+        self.departing_ships.clear()
+
+        enemies.clear()
+        bullets.clear()
+        enemy_bullets.clear()
+
+        cores = self.create_returning_cores(ship_sprites)
+        enemies.extend(cores)
+        self.module_notice = 'THREE ADAPTIVE CORES INCOMING'
+        self.module_notice_timer = 4.0
+
+        effects.announce_objective("CRITICAL THREAT', 'Three Adaptive Cores approaching")
+        audio.play('boss_spawn')
+
+    def update_returning_core(self,core,dt,player,firing):
+        if self.phase != StoryPhase.RETURNING_CORES:
+            return
+
+        ai = self.returning_core_ai[core]
+        core.fire_timer -= dt
+        ai.record_player(dt,player.position,firing,core.health,core.nax_health)
+
+        movement_phase = self.returning_cores.index(core + 1)
+        core.update(dt,player.position,ai.strategy, movement_phase)
+
+    def begin_second_defeat(self,player,bullets,enemy_bullets,effects,audio):
+        if self.phase != StoryPhase.RETURNING_CORES:
+            return
+
+        self.phase = StoryPhase.SECOND_DEFEAT
+        self.phase_time = 0.0
+
+        self.ship.centre.update(player.position)
+        self.ship.update(0)
+        self.ship.explode()
+        self.wreckage = scatter_wreckage(self.debris_source, player.position, self.ship.angle)
+
+        player.health = 1
+        player.rect_size = self.cockpit_hitbox
+
+        player.rect_center = player.position
+        bullets.clear()
+        enemy_bullets.clear()
+        effects.sparks(player.position,32,(255,170,70))
+
+        effects.shake(12)
+        effects.hit_overlay_timer = 0.28
+        audio.play('enemy_down')
     def update_boss(self, dt, player, firing, audio):
         if self.phase == StoryPhase.VICTORY:
             return
@@ -567,6 +660,8 @@ class StoryMode:
         if self.phase == StoryPhase.SCRIPTED_DEFEAT:
             self.hud.draw_departure(surface, self.departing_ships, self.phase_time)
             self.draw_explosion(surface, self.ship.centre, self.phase_time)
+        elif self.phase == StoryPhase.SECOND_DEFEAT:
+            self.draw_explosion(surface, self.ship_centre, self.phase_time)
         elif self.phase == StoryPhase.SURVIVAL_COMPLETE and self.departing_ships:
             self.hud.draw_departure(surface, self.departing_ships, self.phase_time)
 
