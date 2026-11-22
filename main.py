@@ -488,6 +488,11 @@ while running:
         if story.phase == StoryPhase.SURVIVAL:
             dt = min(dt, story.survival_duration - story.phase_time)
         story.advance(dt, effects, audio)
+
+        if story.phase == StoryPhase.RETURNING_CORES and story.phase_time >= story.returning_attack_duration:
+            story.begin_second_defeat(player,bullets,enemy_bullets,effects, audio)
+        if story.phase == StoryPhase.SURVIVAL_COMPLETE and story.phase_time >= story.survival.retreat_duration:
+            story.start_returning_cores(enemies,bullets,enemy_bullets,ship_sprites,audio)
         if story.phase == StoryPhase.RECOVERY_COMPLETE:
             story.start_final_boss(enemies, bullets, enemy_bullets, audio, survival=True)
             story.last_player_position.update(player.position)
@@ -658,6 +663,9 @@ while running:
     for enemy in enemies:
         if story and enemy is story.boss:
             story.update_boss(dt, player, pygame.mouse.get_pressed()[0], audio)
+        elif story and enemy in story.returning_cores:
+            if story.phase == StoryPhase.RETURNING_CORES:
+                story.update_returning_core(enemy,dt,player,pygame.mouse.get_pressed()[0])
         else:
             enemy.update(dt,player.position)
 
@@ -685,6 +693,24 @@ while running:
                     if not story_shot:
                         enemy.fire_timer = 1.7 if enemy.enemy_type == 'siege_walker' else 2.5
 
+        if story and story.phase == StoryPhase.RETURNING_CORES and enemy in story.returning_cores:
+            if enemy.fire_timer <= 0:
+
+                direction = player.position - enemy.position
+
+                if direction.length_squared() > 0:
+                    core_index = story.returning_cores.index(enemy)
+                    spread = (-12,0,12) if core_index == 1 else (0,) #firing 3 bullets, at the enemy, and to either direction. for other cores, one bullet directly towards the player
+                    # we do 0, so that it's a tuple
+                    speed = (285,265,340)[core_index] #tuple indexing
+
+                    for angle in spread:
+                        new_bullet = Bullet(enemy.position, direction.rotate(angle))
+                        new_bullet.speed = speed
+                        enemy_bullet.append(new_bullet)
+
+                    audio.play('core_shot')
+                    enemy.fire_timer = (1.15,1.65,0.8)[core_index]
     separate_enemies(enemies, WIDTH, HEIGHT)
 
     #shooting logic
@@ -811,6 +837,12 @@ while running:
                     bullet.pierce_remaining -= 1
                 else:
                     bullets.remove(bullet)
+
+                if getattr(enemy, 'is_story_invulnerable', False):
+                    effects.sparks(bullet.position, 8, (140,235,255))
+                    audio.play('core_shield')
+                    break
+
                 if story and enemy is story.boss and (story.phase != StoryPhase.SURVIVAL or story.shielded):
                     result = story.hit_boss(bullet.position, effects, audio)
                     if result == 'FURY':
