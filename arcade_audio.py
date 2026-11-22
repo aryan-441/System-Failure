@@ -21,7 +21,9 @@ class ArcadeAudio:
         "part_pickup": "interface/kenney/select_006.ogg",
         "part_attached": "interface/kenney/confirmation_002.ogg",
         "wave_fault": "interface/kenney/glitch_003.ogg",
-        "warning": "warnings/system_computer_noise.ogg"
+        "warning": "warnings/system_computer_noise.ogg",
+        "boss_spawn": "interface/kenney/glitch_004.ogg",
+        "boss_phase": "warnings/system_force_field.ogg",
     }
 
 

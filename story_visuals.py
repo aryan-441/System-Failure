@@ -151,15 +151,42 @@ class StoryHUD:
             right = x + (i+1) * 122 // limit
             pygame.draw.rect(surface, colour if i < value else (49, 66, 82), (left, 26, right-left-1, 5))
 
-    def draw(self, screen, story, health, ammo, hp_limit, ammo_limit, debuff, description):
+    def draw(self, screen, story, health, ammo, hp_limit, ammo_limit, debuff, description, heat_percent, overheated):
         phase = story.phase.name
         teal = (114, 239, 207)
         amber = (255, 183, 109)
         white = (231, 241, 247)
         muted = (161, 184, 202)
         recovery = phase in ('RECOVERY', 'RECOVERY_COMPLETE')
+        final_boss = phase in ('FINAL_BOSS', 'VICTORY')
         wave = story.objective_index + 1
-        if recovery:
+        if phase in ('SURVIVAL', 'SURVIVAL_COMPLETE'):
+            heading = 'FINAL ENCOUNTER   /   SURVIVAL'
+            if phase == 'SURVIVAL_COMPLETE':
+                title = 'Survival complete'
+                detail = 'Core and hostiles cleared' if story.survival_cleared_early else f'{story.survival_duration:.0f} seconds survived'
+                accent = teal
+            else:
+                seconds = math.ceil(story.survival_duration - story.phase_time)
+                title = f'Survive: {seconds}s'
+                if story.boss.health > 0:
+                    detail = 'Core shield active' if story.shielded else 'Core exposed'
+                else:
+                    detail = 'Core down. Stay alive.'
+                accent = amber
+        elif final_boss:
+            heading = 'FINAL ENCOUNTER   /   SYSTEM CORE'
+            if phase == 'VICTORY':
+                title, detail = 'System restored', 'The core has been shut down'
+                accent = teal
+            else:
+                phase_names = {1: 'PHASE 1: SCOUTS', 2: 'PHASE 2: HEAVY ASSAULT',
+                               3: 'PHASE 3: CORE EXPOSED', 4: 'FURY MODE'}
+                title = phase_names.get(story.final_boss_phase, 'FINAL BOSS')
+                vulnerability = 'SHIELDED' if story.final_boss_phase < 3 or story.fury_boss_locked else 'VULNERABLE'
+                detail = f'CORE {story.boss.health} / {story.boss.max_health}  ·  {vulnerability}'
+                accent = (255, 105, 130) if story.final_boss_phase == 4 else amber
+        elif recovery:
             target = story.objectives[story.objective_index]['target']
             heading = f'PHASE 02   /   RECOVERY      WAVE {wave} OF 6'
             title = 'Clear the sector'
@@ -178,10 +205,8 @@ class StoryHUD:
             accent = teal
         else:
             heading = 'PHASE 01   /   FIRST CONTACT'
-            title = 'Engage the escorts'
-            shield = 'Shield active' if story.shielded else 'Core exposed'
-            seconds = max(0, math.ceil(story.opening_duration - story.phase_time))
-            detail = f'{shield}    /    Survive {seconds}s'
+            title = 'Evade the Core'
+            detail = 'Shield active' if story.shielded else 'Core exposed'
             if story.charge_start <= story.phase_time < story.charge_start + story.charge_duration:
                 title = 'Cannons charging'
             if phase == 'SCRIPTED_DEFEAT':
@@ -195,6 +220,28 @@ class StoryHUD:
         mission.blit(self.label.render(detail, True, muted), (12, 53))
         screen.blit(mission, (12, 10))
 
+        progress = story.progress_percent()
+        progress_panel = pygame.Surface((200, 42), pygame.SRCALPHA)
+        progress_panel.fill((8, 19, 34, 227))
+        label = self.label.render(f'STORY PROGRESS  {progress}%', True, teal)
+        progress_panel.blit(label, (10, 7))
+        pygame.draw.rect(progress_panel, (49, 66, 82), (10, 25, 180, 6))
+        pygame.draw.rect(progress_panel, teal, (10, 25, 180 * progress // 100, 6))
+        screen.blit(progress_panel, (WIDTH - 212, 10))
+
+        if phase == 'FINAL_BOSS' or (phase == 'SURVIVAL' and story.boss.health > 0):
+            bar_width = 300
+            bar = pygame.Rect(WIDTH // 2 - bar_width // 2, 24, bar_width, 12)
+            pygame.draw.rect(screen, (55, 35, 50), bar, border_radius=5)
+            fill = round(bar_width * max(0, story.boss.health) / max(1, story.boss.max_health))
+            if fill:
+                pygame.draw.rect(screen, (245, 65, 95), (bar.x, bar.y, fill, bar.height), border_radius=5)
+            integrity = 'CORE INTEGRITY'
+            if phase == 'SURVIVAL':
+                integrity = f'{integrity}  {story.boss.health} / {story.boss.max_health}'
+            label = self.label.render(integrity, True, (255, 190, 205))
+            screen.blit(label, label.get_rect(midbottom=(WIDTH // 2, 20)))
+
         dock = pygame.Surface((WIDTH, 42), pygame.SRCALPHA)
         dock.fill((7, 16, 30, 233))
         pygame.draw.line(dock, (57, 83, 100), (0,0), (WIDTH,0))
@@ -207,11 +254,44 @@ class StoryHUD:
                 colour = teal if part.attached else (65, 85, 102)
                 pygame.draw.polygon(dock, colour, [(x,24),(x+9,24),(x+6,31),(x-3,31)])
         if debuff != 'NONE':
-            name = self.body.render(debuff.replace('_', ' '), True, amber)
+            debuff_name = 'INVERTED CONTROLS' if debuff == 'REVERSED' else debuff.replace('_', ' ')
+            name = self.body.render(debuff_name, True, amber)
             dock.blit(name, name.get_rect(topright=(WIDTH-16, 3)))
             text = self.label.render(description, True, muted)
             dock.blit(text, text.get_rect(topright=(WIDTH-16, 23)))
+        if debuff == 'WEAPON_OVERHEATING':
+            colour = (255, 105, 130) if overheated else amber
+            label = f'WEAPON HEAT  {heat_percent}%'
+            if overheated:
+                label += '  JAMMED'
+            dock.blit(self.label.render(label, True, colour), (460, 6))
+            pygame.draw.rect(dock, (49, 66, 82), (460, 26, 150, 5))
+            pygame.draw.rect(dock, colour, (460, 26, 150 * heat_percent // 100, 5))
+        module_names = ('RIFT_DRIVE', 'SIEGE_CANNON', 'PHASE_CLOAK')
+        if any(name in story.recovered_upgrades for name in module_names):
+            modules = 'MODULES: ' + ' / '.join(
+                name.replace('_', ' ') for name in module_names
+                if name in story.recovered_upgrades
+            )
+            dock.blit(self.label.render(modules, True, (127, 225, 237)), (318, 6))
+        ability_hints = []
+        if 'RIFT_DRIVE' in story.recovered_upgrades:
+            ability_hints.append('SPACE: RIFT DASH')
+        if 'PHASE_CLOAK' in story.recovered_upgrades:
+            ability_hints.append('Q: PHASE CLOAK')
+        if ability_hints:
+            dock.blit(self.label.render('   '.join(ability_hints), True, (175, 195, 215)), (318, 23))
         screen.blit(dock, (0, HEIGHT-42))
+
+        if story.module_notice_timer > 0:
+            notice = self.body.render(story.module_notice, True, (143, 248, 222))
+            screen.blit(notice, notice.get_rect(midtop=(WIDTH // 2, 54)))
+        if story.phase_cloak_timer > 0:
+            ability = self.label.render(f'PHASE CLOAK {story.phase_cloak_timer:.1f}s', True, (100, 240, 245))
+            screen.blit(ability, ability.get_rect(topright=(WIDTH - 18, 94)))
+        elif story.rift_drive_cooldown > 0 and 'RIFT_DRIVE' in story.recovered_upgrades:
+            ability = self.label.render(f'RIFT DRIVE {story.rift_drive_cooldown:.1f}s', True, (175, 145, 255))
+            screen.blit(ability, ability.get_rect(topright=(WIDTH - 18, 94)))
 
         if story.wave_clear_timer > 0:
             panel = pygame.Surface((226, 44), pygame.SRCALPHA)

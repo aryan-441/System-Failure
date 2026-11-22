@@ -63,6 +63,18 @@ class ShipSprites:
         elif enemy.enemy_type == 'bomber':
             enemy.ship_image = self.bomber_image
 
+        elif enemy.enemy_type == 'rift_stalker':
+            enemy.ship_image = self.interceptor_image
+            enemy.miniboss_color = (170, 105, 255)
+
+        elif enemy.enemy_type == 'siege_walker':
+            enemy.ship_image = self.tank_image or self.ranger_image
+            enemy.miniboss_color = (255, 155, 75)
+
+        elif enemy.enemy_type == 'phase_wraith':
+            enemy.ship_image = self.bomber_image or self.normal_image
+            enemy.miniboss_color = (85, 235, 235)
+
         elif enemy.enemy_type == 'tank':
             enemy.is_boss = True
             enemy.health = 6
@@ -104,7 +116,14 @@ class ShipSprites:
             sprite = sprite.copy()
             sprite.fill((255, 255, 255, 0), special_flags=pygame.BLEND_RGB_ADD)
 
+        if getattr(enemy, 'is_phasing', False):
+            sprite.set_alpha(85)
+
         screen.blit(sprite, sprite_rect)
+
+        if getattr(enemy, 'is_story_miniboss', False):
+            pygame.draw.circle(screen, enemy.miniboss_color, sprite_rect.center,
+                               max(sprite_rect.width, sprite_rect.height) // 2 + 5, 2)
 
         bar_width = 12
         gap = 3

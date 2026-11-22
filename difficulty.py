@@ -55,12 +55,12 @@ DIFFICULTIES = {
         'starting_enemies': 3,
         'max_enemies': 8,
 
-        'single_interval': 1.8,
-        'double_interval': 3.0,
+        'single_interval': 1.65,
+        'double_interval': 2.75,
         'spawn_weights': [85, 15],
 
-        'min_single_interval': 1.4,
-        'min_double_interval': 2.4,
+        'min_single_interval': 1.30,
+        'min_double_interval': 2.25,
         'difficulty_increase': 0.05,
 
         'player_health': 5,
@@ -78,3 +78,30 @@ DIFFICULTIES = {
 }
 
 DEFAULT_DIFFICULTY = 'medium'
+
+STORY_DIFFICULTIES = {
+    'easy': {
+        'wave_targets': (3, 5, 5, 5, 6, 5),
+        'wave_active_limits': (2, 3, 3, 3, 4, 4),
+        'wave_spawn_intervals': (1.35, 1.30, 1.25, 1.20, 1.15, 1.10),
+        'opening_rapid_shot_interval': 0.65,
+        'survival_spawn_interval_multiplier': 1.35,
+        'survival_active_limit_reduction': 2,
+    },
+    'medium': {
+        'wave_targets': (4, 6, 6, 7, 8, 9),
+        'wave_active_limits': (3, 3, 4, 4, 5, 6),
+        'wave_spawn_intervals': (1.10, 1.00, 0.90, 0.85, 0.80, 0.75),
+        'opening_rapid_shot_interval': 0.40,
+        'survival_spawn_interval_multiplier': 1.15,
+        'survival_active_limit_reduction': 1,
+    },
+    'hard': {
+        'wave_targets': (5, 7, 8, 9, 10, 12),
+        'wave_active_limits': (3, 4, 5, 5, 6, 7),
+        'wave_spawn_intervals': (0.95, 0.85, 0.75, 0.70, 0.65, 0.60),
+        'opening_rapid_shot_interval': 0.25,
+        'survival_spawn_interval_multiplier': 1.12,
+        'survival_active_limit_reduction': 1,
+    }
+}

@@ -13,6 +13,7 @@ class ArcadeEffects:
     def reset(self):
         self.particles = []
         self.floating_text = []
+        self.banner_heading = "SYSTEM ERROR"
         self.banner_text = ""
         self.banner_timer = 0.0
         self.banner_duration = 2.0
@@ -82,19 +83,24 @@ class ArcadeEffects:
 
     def player_hit(self, position, damage):
         self.sparks(position, 22, (255, 65, 90))
-        self.floating_text.append({
-            "text": f"-{damage}",
-            "position": pygame.Vector2(position) + pygame.Vector2(
-                random.uniform(-8, 8), -22
-            ),
-            "life": 0.95,
-            "maximum_life": 0.95,
-        })
+        if damage > 0:
+            self.floating_text.append({
+                "text": f"-{damage}",
+                "position": pygame.Vector2(position) + pygame.Vector2(
+                    random.uniform(-8, 8), -22
+                ),
+                "life": 0.95,
+                "maximum_life": 0.95,
+            })
         self.hit_overlay_timer = 0.28
         self.shake = max(self.shake, 9)
 
     def malfunction_changed(self, malfunction):
-        self.banner_text = malfunction.replace("_", " ")
+        self.announce_objective("SYSTEM ERROR", malfunction.replace("_", " "))
+
+    def announce_objective(self, heading, message):
+        self.banner_heading = heading
+        self.banner_text = message
         self.banner_timer = self.banner_duration
         self.shake = max(self.shake, 4)
 
@@ -210,7 +216,7 @@ class ArcadeEffects:
                 panel.get_rect(), 3, border_radius=12
             )
             heading = self.banner_font.render(
-                "SYSTEM ERROR", True, (255, 120, 130)
+                self.banner_heading, True, (255, 120, 130)
             )
             message = self.small_font.render(
                 self.banner_text, True, (255, 255, 255)
