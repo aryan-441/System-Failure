@@ -489,10 +489,10 @@ while running:
             dt = min(dt, story.survival_duration - story.phase_time)
         story.advance(dt, effects, audio)
 
-        if story.phase == StoryPhase.RETURNING_CORES and story.phase_time >= story.returning_attack_duration:
+        if story.phase == StoryPhase.RETURNING_CORES and story.phase_time >= story.retreating_attack_duration:
             story.begin_second_defeat(player,bullets,enemy_bullets,effects, audio)
-        if story.phase == StoryPhase.SURVIVAL_COMPLETE and story.phase_time >= story.survival.retreat_duration:
-            story.start_returning_cores(enemies,bullets,enemy_bullets,ship_sprites,audio)
+        if story.phase == StoryPhase.SURVIVAL_COMPLETE and story.phase_time >= story.survival_retreat_duration:
+            story.start_returning_cores(enemies,bullets,enemy_bullets,ship_sprites,effects,audio)
         if story.phase == StoryPhase.RECOVERY_COMPLETE:
             story.start_final_boss(enemies, bullets, enemy_bullets, audio, survival=True)
             story.last_player_position.update(player.position)
@@ -707,7 +707,7 @@ while running:
                     for angle in spread:
                         new_bullet = Bullet(enemy.position, direction.rotate(angle))
                         new_bullet.speed = speed
-                        enemy_bullet.append(new_bullet)
+                        enemy_bullets.append(new_bullet)
 
                     audio.play('core_shot')
                     enemy.fire_timer = (1.15,1.65,0.8)[core_index]

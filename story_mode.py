@@ -204,7 +204,7 @@ class StoryMode:
 
         if self.phase == StoryPhase.SECOND_DEFEAT and self.phase_time >= self.defeat_duration:
             self.phase = StoryPhase.COLLECTOR_FORMATION
-            self.phase = 0.0
+            self.phase_time = 0.0
         if self.phase == StoryPhase.SURVIVAL_COMPLETE and self.phase_time >= self.survival_retreat_duration:
             self.departing_ships.clear()
 
@@ -248,7 +248,7 @@ class StoryMode:
         if self.phase != StoryPhase.SURVIVAL_COMPLETE:
             return
 
-        self.pahse  = StoryPhase.RETURNING_CORES
+        self.phase  = StoryPhase.RETURNING_CORES
         self.phase_time = 0.0
 
         self.departing_ships.clear()
@@ -262,7 +262,7 @@ class StoryMode:
         self.module_notice = 'THREE ADAPTIVE CORES INCOMING'
         self.module_notice_timer = 4.0
 
-        effects.announce_objective("CRITICAL THREAT', 'Three Adaptive Cores approaching")
+        effects.announce_objective("CRITICAL THREAT", 'Three Adaptive Cores approaching')
         audio.play('boss_spawn')
 
     def update_returning_core(self,core,dt,player,firing):
@@ -271,9 +271,9 @@ class StoryMode:
 
         ai = self.returning_core_ai[core]
         core.fire_timer -= dt
-        ai.record_player(dt,player.position,firing,core.health,core.nax_health)
+        ai.record_player(dt,player.position,firing,core.health,core.max_health)
 
-        movement_phase = self.returning_cores.index(core + 1)
+        movement_phase = self.returning_cores.index(core) + 1
         core.update(dt,player.position,ai.strategy, movement_phase)
 
     def begin_second_defeat(self,player,bullets,enemy_bullets,effects,audio):
@@ -289,14 +289,14 @@ class StoryMode:
         self.wreckage = scatter_wreckage(self.debris_source, player.position, self.ship.angle)
 
         player.health = 1
-        player.rect_size = self.cockpit_hitbox
+        player.rect.size = self.cockpit_hitbox
 
-        player.rect_center = player.position
+        player.rect.center = player.position
         bullets.clear()
         enemy_bullets.clear()
         effects.sparks(player.position,32,(255,170,70))
 
-        effects.shake(12)
+        effects.shake = 12
         effects.hit_overlay_timer = 0.28
         audio.play('enemy_down')
     def update_boss(self, dt, player, firing, audio):
@@ -661,7 +661,7 @@ class StoryMode:
             self.hud.draw_departure(surface, self.departing_ships, self.phase_time)
             self.draw_explosion(surface, self.ship.centre, self.phase_time)
         elif self.phase == StoryPhase.SECOND_DEFEAT:
-            self.draw_explosion(surface, self.ship_centre, self.phase_time)
+            self.draw_explosion(surface, self.ship.centre, self.phase_time)
         elif self.phase == StoryPhase.SURVIVAL_COMPLETE and self.departing_ships:
             self.hud.draw_departure(surface, self.departing_ships, self.phase_time)
 
