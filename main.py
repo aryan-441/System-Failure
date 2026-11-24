@@ -18,7 +18,7 @@ from arcade_audio import ArcadeAudio
 from enemy_spacing import separate_enemies
 from difficulty import DIFFICULTIES, DEFAULT_DIFFICULTY, ARCADE_TANK_COOLDOWN, ARCADE_TANK_CHANCE
 from story_mode import StoryMode, StoryPhase, RecoveryStep
-from story_visuals import draw_shield
+from story_visuals import draw_shield, draw_minion_arrival
 
 try:
     pygame.mixer.pre_init(22050, -16, 1, 512)
@@ -55,8 +55,8 @@ def draw_menu_choice(rect, label, detail, shortcut, accent, label_font, detail_f
     screen.blit(hint, hint.get_rect(center=keycap.center))
 
 
-def choose_difficulty(story_only=False):
-    mode = 'story' if story_only else None
+def choose_difficulty(story_only=False, arcade_only=False):
+    mode = 'story' if story_only else 'arcade' if arcade_only else None
     title_font = pygame.font.Font(None, 96)
     mode_font = pygame.font.Font(None, 52)
     difficulty_font = pygame.font.Font(None, 37)
@@ -97,7 +97,7 @@ def choose_difficulty(story_only=False):
                     continue
 
                 if (is_key and event.key == pygame.K_ESCAPE) or (is_click and back_rect.collidepoint(event.pos)):
-                    if story_only:
+                    if story_only or arcade_only:
                         return 'back', None
                     mode = None
                     continue
@@ -191,6 +191,7 @@ last_aim_direction = pygame.Vector2(0, -1)
 damage_timer = 0
 game_time = 0
 first_failure_started = False
+pending_malfunction = None
 game_over_sound_played = False
 
 ammo = difficulty['starting_ammo']
@@ -289,7 +290,7 @@ def draw_crosshair(screen,enemies,font, camera_offset): #custom crosshair
 
         if getattr(target, 'is_adaptive_boss', False):
             enemy_type = 'adaptive core'
-        elif getattr(target,'is_boss',False) and enemy_type != 'adaptive core':
+        elif getattr(target,'is_boss',False) and enemy_type not in ('adaptive core', 'collector'):
             enemy_type = 'tank'
 
         label = font.render(
@@ -318,12 +319,29 @@ while running:
             running = False
 
         if event.type == pygame.KEYDOWN: #restarts
-            if story:
-                if event.key == pygame.K_ESCAPE:
+            mission_complete = story and story.phase == StoryPhase.VICTORY
+            return_to_menu = event.key == pygame.K_ESCAPE
+            if mission_complete or return_to_menu:
+                if return_to_menu:
+                    selection = choose_difficulty()
+                elif event.key == pygame.K_r:
+                    selection = ('story', story_difficulty)
+                elif event.key == pygame.K_a:
+                    selection = choose_difficulty(arcade_only=True)
+                elif event.key == pygame.K_m:
+                    selection = choose_difficulty()
+                else:
+                    continue
+                if selection is None:
                     running = False
+                    break
+                if selection[0] == 'back':
+                    continue
+            elif story:
                 if event.key == pygame.K_r and player.health <= 0 and game_over_sound_played:
                     was_final_boss = story.phase in (StoryPhase.FINAL_BOSS, StoryPhase.SURVIVAL)
-                    story.retry_wave()
+                    if story.phase != StoryPhase.COLLECTOR_FIGHT:
+                        story.retry_wave()
                     player.health, ammo = story.resource_limits(difficulty['player_health'], max_ammo)
                     player.position.update(WIDTH / 2, HEIGHT / 2)
                     player.rect.center = player.position
@@ -336,6 +354,9 @@ while running:
                     is_stalled = False
                     damage_timer = difficulty['damage_cooldown']
                     effects.reset()
+                    story.hud.gains.clear()
+                    if story.phase == StoryPhase.COLLECTOR_FIGHT:
+                        story.reset_collector_fight(enemies, player, effects, audio)
                     if was_final_boss:
                         story.module_notice = 'FINAL ENCOUNTER RESTARTED'
                         story.module_notice_timer = 2.0
@@ -363,12 +384,16 @@ while running:
                     audio.play('core_shield')
                 #story.recover_part(event.key)
                 continue
-            if player.health <= 0 and event.key in (
+            if mission_complete or return_to_menu or (player.health <= 0 and event.key in (
                 pygame.K_r, pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_s
-            ):
+            )):
 
                 story_difficulty = None
-                if event.key == pygame.K_1:
+                if mission_complete or return_to_menu:
+                    mode, selected_difficulty = selection
+                    story_difficulty = selected_difficulty if mode == 'story' else None
+                    difficulty_name = DEFAULT_DIFFICULTY if story_difficulty else selected_difficulty
+                elif event.key == pygame.K_1:
                     difficulty_name = 'easy'
                 elif event.key == pygame.K_2:
                     difficulty_name = 'medium'
@@ -410,6 +435,7 @@ while running:
                 malfunction = 'NONE'
                 game_time = 0
                 first_failure_started = False
+                pending_malfunction = None
                 game_over_sound_played = False
 
                 ammo = difficulty['starting_ammo']
@@ -433,6 +459,11 @@ while running:
     if not running:
         break
 
+    if story and story.phase == StoryPhase.VICTORY:
+        story.hud.draw_victory(screen)
+        pygame.display.flip()
+        continue
+
     if player.health <= 0:
         screen.fill(BG_COLOUR)
         background.draw(screen)
@@ -449,11 +480,11 @@ while running:
 
         if story:
             title = game_over_font.render('HULL LOST', True, (255, 105, 115))
-            retry_text = ('R  Retry survival     Esc  Exit'
+            retry_text = ('R  Retry survival     Esc  Main menu'
                           if story.phase == StoryPhase.SURVIVAL
-                          else 'R  Retry final encounter     Esc  Exit'
-                          if story.phase == StoryPhase.FINAL_BOSS
-                          else f'R  Retry wave {story.objective_index + 1}     Esc  Exit')
+                          else 'R  Retry final encounter     Esc  Main menu'
+                          if story.phase in (StoryPhase.FINAL_BOSS, StoryPhase.COLLECTOR_FIGHT)
+                          else f'R  Retry wave {story.objective_index + 1}     Esc  Main menu')
             retry = restart_font.render(retry_text, True, (175, 224, 236))
             screen.blit(title, title.get_rect(center=(WIDTH/2, HEIGHT/2 - 24)))
             screen.blit(retry, retry.get_rect(center=(WIDTH/2, HEIGHT/2 + 42)))
@@ -468,7 +499,7 @@ while running:
         )
         score_display = font.render(f"FINAL SCORE: {score}", True, (255, 255, 255))
         restart = restart_font.render(
-            "R: RESTART    1: EASY    2: MEDIUM    3: HARD    S: STORY MODE",
+            "R  Restart    1–3  Difficulty    S  Story Mode    Esc  Main menu",
             True,
             (120, 200, 255)
         )
@@ -501,12 +532,15 @@ while running:
         story.advance(dt, effects, audio)
 
         if story.phase == StoryPhase.COLLECTOR_FORMATION and not story.collector_formation_started:
-            story.start_collector_formation(enemies,bullets,enemy_bullets,effects,audio)
+            story.start_collector_formation(enemies,bullets,enemy_bullets,player,effects,audio)
         if story.phase == StoryPhase.COLLECTOR_FORMATION and story.phase_time >= story.collector_formation_duration:
             story.start_collector_fight(enemies, player, effects, audio)
+            _, ammo = story.resource_limits(difficulty['player_health'], max_ammo)
+        if story.phase == StoryPhase.COLLECTOR_FIGHT:
+            story.update_collector_systems(dt, enemies, player, ship_sprites, effects, audio)
         
         if story.phase == StoryPhase.SURVIVAL_COMPLETE and story.phase_time >= story.survival_retreat_duration:
-            story.start_returning_cores(enemies,bullets,enemy_bullets,ship_sprites,effects,audio)
+            story.start_returning_cores(enemies,bullets,enemy_bullets,ship_sprites,player,effects,audio)
             story.last_player_position.update(player.position)
             story.player_velocity.update(0, 0)
         if story.phase == StoryPhase.RECOVERY_COMPLETE:
@@ -531,7 +565,7 @@ while running:
 
     current_health_limit = difficulty['player_health']
     current_max_ammo = max_ammo
-    current_ammo_per_kill = ammo_per_kill
+    current_ammo_per_kill = 2 if story else ammo_per_kill
 
     if story:
         current_health_limit, current_max_ammo = story.resource_limits(current_health_limit, current_max_ammo)
@@ -547,25 +581,17 @@ while running:
     ammo = min(ammo, current_max_ammo)
     round_changed = story is None and round_manager.update(dt)
 
-    if story is None and game_time >= 15 and not first_failure_started and round_manager.current_malfunction != 'NONE':
-        first_failure_started = True
-        round_manager.round_timer = 0
-        malfunction = round_manager.current_malfunction
-        effects.malfunction_changed(malfunction)
+    if story is None and game_time >= 15 and (not first_failure_started or round_changed):
+        if not first_failure_started:
+            first_failure_started = True
+            round_manager.round_timer = 0
+        pending_malfunction = round_manager.current_malfunction
+        effects.malfunction_changed(pending_malfunction)
         audio.play("wave_fault")
-        stall_timer = 0
-        is_stalled = False
-        reactor_timer = 0
-        reactor_impulse = pygame.Vector2(0, 0)
-        reactor_active = False
-        reactor_duration = 0.5
-        weapon_heat = 0
-        overheated = False
 
-    elif game_time >= 15 and round_changed:
-        malfunction = round_manager.current_malfunction
-        effects.malfunction_changed(malfunction)
-        audio.play("wave_fault")
+    if pending_malfunction is not None and effects.banner_timer <= 0:
+        malfunction = pending_malfunction
+        pending_malfunction = None
 
         stall_timer = 0
         is_stalled = False
@@ -676,12 +702,14 @@ while running:
 
             enemies.append(new_enemy)
 
-    if story and story.phase == StoryPhase.RETURNING_CORES:
+    if story and story.phase in (StoryPhase.RETURNING_CORES, StoryPhase.COLLECTOR_FIGHT):
         story.track_returning_player(dt, player)
 
     for enemy in enemies:
         if story and enemy is story.boss:
             story.update_boss(dt, player, pygame.mouse.get_pressed()[0], audio)
+        elif story and enemy is story.collector:
+            story.move_and_fire_collector(dt, player, enemy_bullets, audio)
         elif story and enemy in story.returning_cores:
             if story.phase == StoryPhase.RETURNING_CORES:
                 story.update_returning_core(enemy, dt, player)
@@ -752,11 +780,13 @@ while running:
         weapon_heat = 0
         overheated = False
 
-    if ammo == 0 and len(bullets) == 0:
+    collector_fight = story and story.phase == StoryPhase.COLLECTOR_FIGHT
+    if ammo == 0 and (collector_fight or len(bullets) == 0):
         empty_ammo_timer += dt
 
-        if empty_ammo_timer >= 5:
-            ammo = 3
+        reload_delay = 1.6 if collector_fight else 5
+        if empty_ammo_timer >= reload_delay:
+            ammo = max(3, current_max_ammo // 8) if collector_fight else 3
             empty_ammo_timer = 0
             audio.play("ammo")
     else:
@@ -766,7 +796,8 @@ while running:
     if aim_direction.length_squared() > 0:
         last_aim_direction = aim_direction
 
-    if controls_enabled and mouse_buttons[0] and shot_timer <= 0 and ammo > 0 and not overheated: #if the user clicks and time is left
+    weapons_enabled = controls_enabled and (story is None or story.phase != StoryPhase.RETURN_TO_BASE)
+    if weapons_enabled and mouse_buttons[0] and shot_timer <= 0 and ammo > 0 and not overheated: #if the user clicks and time is left
         direction = last_aim_direction
 
         if 'TARGETING_GLITCH' in story_debuffs:
@@ -824,14 +855,13 @@ while running:
             if (bullet.is_opening_core_shot or damage_timer <= 0) and player.health > 0 and (story is None or story.phase_cloak_timer <= 0):
                 damage = 1
 
-                if active_malfunction == 'SHIELD_MALFUNCTION':
+                if active_malfunction == 'SHIELD_MALFUNCTION' and not getattr(bullet, 'is_collector_shot', False):
                     damage = 2
 
                 previous_health = player.health
                 player.health = max(minimum_health, player.health - damage)
-                if bullet.is_opening_core_shot:
-                    damage = previous_health - player.health
-                else:
+                damage = previous_health - player.health
+                if not bullet.is_opening_core_shot:
                     damage_timer = damage_cooldown
                 effects.player_hit(player.position, damage)
                 audio.play("player_hit")
@@ -854,6 +884,12 @@ while running:
                 else:
                     bullets.remove(bullet)
 
+                if story and enemy is story.collector and story.collector_shielded:
+                    effects.sparks(bullet.position, 9, (140, 235, 255))
+                    if story.shield_flash <= 0:
+                        audio.play('core_shield')
+                    story.shield_flash = 0.22
+                    break
                 if getattr(enemy, 'is_story_invulnerable', False):
                     effects.sparks(bullet.position, 8, (140,235,255))
                     if enemy.shield_flash <= 0:
@@ -891,8 +927,14 @@ while running:
                         audio.play('wave_clear')
                     enemies.remove(enemy)
                     score += 100
+                    previous_ammo = ammo
                     ammo = min(current_max_ammo, ammo + current_ammo_per_kill)
+                    if story:
+                        story.hud.add_gain('AMMO', ammo - previous_ammo)
 
+                    if story and enemy is story.collector:
+                        story.destroy_collector(enemies, bullets, enemy_bullets, player, effects, audio)
+                        break
                     if story is None and score > high_score:
                         new_record = True
                         high_score = score
@@ -900,6 +942,9 @@ while running:
                             get_high_score(high_score, difficulty_name)
                         except OSError:
                             pass
+
+                elif story and enemy is story.collector:
+                    story.update_collector_phase(effects, audio)
 
                 if bullet not in bullets:
                     break
@@ -909,11 +954,23 @@ while running:
 
     collision = False
 
+    if (collector_fight and story.phase == StoryPhase.COLLECTOR_FIGHT
+            and story.collector.rect.colliderect(player.rect)):
+        player.health = 0
+        continue
+
     for enemy in enemies[:]:
+        if story and enemy is story.collector:
+            continue
         if enemy.rect.colliderect(player.rect):
             if getattr(enemy, 'is_phasing', False):
                 continue
             collision = True
+
+            if story and ((story.phase == StoryPhase.OPENING and enemy is story.boss)
+                          or (story.phase == StoryPhase.RETURNING_CORES and enemy in story.returning_cores)):
+                player.health = 0
+                break
 
             if enemy.enemy_type == 'bomber':
                 effects.enemy_destroyed(enemy)
@@ -934,9 +991,7 @@ while running:
                     audio.play("player_hit")
 
             elif damage_timer <= 0 and player.health > 0 and (story is None or story.phase_cloak_timer <= 0):
-                if story and story.phase == StoryPhase.RETURNING_CORES and enemy in story.returning_cores:
-                    damage = 3
-                elif active_malfunction == 'SHIELD_MALFUNCTION':
+                if active_malfunction == 'SHIELD_MALFUNCTION':
                     damage = 2
                 else:
                     damage = 1
@@ -960,6 +1015,9 @@ while running:
         if not enemies or story.phase_time >= story.survival_duration:
             story.finish_survival(enemies, bullets, enemy_bullets, effects, audio)
 
+    if story and story.phase in (StoryPhase.RETURN_TO_BASE, StoryPhase.DOCKING):
+        story.update_docking(player, audio)
+
     if collision:
         pygame.display.set_caption("COLLISION DETECTED!")
     else:
@@ -972,8 +1030,11 @@ while running:
             draw_shield(world_surface, player.position, story.phase_time, 0.15)
         story.update_ship(player, world_mous_pos, dt, effects)
         if story.update_pickup(player, audio):
+            previous_health, previous_ammo = player.health, ammo
             player.health = min(current_health_limit, player.health + 2)
             ammo = min(current_max_ammo, ammo + 3)
+            story.hud.add_gain('HULL', player.health - previous_health)
+            story.hud.add_gain('AMMO', ammo - previous_ammo)
 
         if story.pending_rewards > 0:
             audio.play('part_attached')
@@ -989,10 +1050,16 @@ while running:
     for enemy in enemies:
         use_core_hud = story and enemy is story.boss and story.phase in (StoryPhase.SURVIVAL, StoryPhase.FINAL_BOSS)
         returning_core = story and story.phase == StoryPhase.RETURNING_CORES and enemy in story.returning_cores
-        ship_sprites.draw_enemy(world_surface, enemy, show_health=not (use_core_hud or returning_core or (story and enemy is story.collector)))
+        if story and enemy in story.collector_entry_times:
+            draw_minion_arrival(world_surface, enemy, story.phase_time - story.collector_entry_times[enemy])
+        is_collector = story and enemy is story.collector
+        ship_sprites.draw_enemy(world_surface, enemy, show_health=not (use_core_hud or returning_core or is_collector),
+                                sprite_size=(150, 150) if is_collector else None)
         effects.draw_enemy_flash(world_surface, enemy)
         if story and enemy is story.boss:
             story.draw_boss_defences(world_surface)
+        elif story and enemy is story.collector:
+            story.draw_collector_defences(world_surface)
         elif returning_core:
             story.draw_returning_core_defences(world_surface, enemy, player, bullets)
 
@@ -1017,7 +1084,14 @@ while running:
         heat_percent = int(100 * weapon_heat / max_weapon_heat)
         story.draw_hud(screen, player, ammo, current_health_limit, current_max_ammo, story_display_debuff, error_explanations.get(story_display_debuff,''), heat_percent, overheated)
         effects.draw_overlay(screen, WIDTH, HEIGHT)
-        draw_crosshair(screen,enemies,target_font,camera_offset)
+        if story.phase == StoryPhase.DOCKING:
+            fade = max(0.0, min(1.0, (story.phase_time - story.dock_align_duration) / story.dock_fade_duration))
+            if fade > 0:
+                screen.fill((255 - round(255 * fade),) * 3, special_flags=pygame.BLEND_RGB_MULT)
+        elif story.phase == StoryPhase.VICTORY:
+            screen.fill((0, 0, 0))
+        else:
+            draw_crosshair(screen,enemies,target_font,camera_offset)
         pygame.display.flip()
         continue
 
@@ -1043,8 +1117,9 @@ while running:
         )
     else:
         round_text = font.render(f"ROUND: {round_manager.round_number}", True, (255, 255, 255))
+        status = "FAULT INCOMING" if malfunction == 'NONE' else f"SYSTEM ERROR: {malfunction.replace('_', ' ')}"
         malfunction_text = small_font.render(
-            f"SYSTEM ERROR: {malfunction.replace('_', ' ')}",
+            status,
             True,
             (255, 120, 130)
         )
@@ -1064,7 +1139,7 @@ while running:
     screen.blit(round_text, (WIDTH - round_text.get_width() - 20, 60))
     screen.blit(malfunction_text, (WIDTH - malfunction_text.get_width() - 20, 100))
 
-    if game_time >= 15:
+    if malfunction != 'NONE':
         explanation = error_explanations.get(malfunction, 'Unknown system error')
         explanation_text = small_font.render(
             explanation,

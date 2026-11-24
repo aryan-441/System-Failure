@@ -97,7 +97,7 @@ class ShipSprites:
 
         enemy.max_health = enemy.health
 
-    def draw_enemy(self, screen, enemy, show_health=True):
+    def draw_enemy(self, screen, enemy, show_health=True, sprite_size=None):
         image = enemy.ship_image
 
         if image is None:
@@ -107,12 +107,7 @@ class ShipSprites:
                 pygame.draw.rect(screen, (255, 0, 0), enemy.rect)
             return
 
-        scale = 1
-
-        width = max(1, int(enemy.rect.width * scale))
-        height = max(1, int(enemy.rect.height * scale))
-
-        sprite = pygame.transform.smoothscale(image, (width, height))
+        sprite = pygame.transform.smoothscale(image, sprite_size or enemy.rect.size)
         sprite_rect = sprite.get_rect(center=enemy.rect.center)
 
         if pygame.time.get_ticks() - enemy.last_hit < 120:

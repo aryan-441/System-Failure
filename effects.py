@@ -206,7 +206,8 @@ class ArcadeEffects:
             opacity = int(
                 255 * min(1.0, age / 0.18, self.banner_timer / 0.45)
             )
-            panel = pygame.Surface((width, 90), pygame.SRCALPHA)
+            panel = pygame.Surface((min(width, 540), 72), pygame.SRCALPHA)
+            centre = panel.get_width() // 2
             pygame.draw.rect(
                 panel, (45, 8, 25, int(160 * opacity / 255)),
                 panel.get_rect(), border_radius=12
@@ -223,6 +224,6 @@ class ArcadeEffects:
             )
             heading.set_alpha(opacity)
             message.set_alpha(opacity)
-            panel.blit(heading, heading.get_rect(center=(width // 2, 28)))
-            panel.blit(message, message.get_rect(center=(width // 2, 67)))
-            surface.blit(panel, (0, int(height * 0.28)))
+            panel.blit(heading, heading.get_rect(center=(centre, 23)))
+            panel.blit(message, message.get_rect(center=(centre, 52)))
+            surface.blit(panel, (width // 2 - centre, int(height * 0.15)))

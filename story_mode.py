@@ -1,12 +1,14 @@
 import math
 import random
+from pathlib import Path
 from enum import Enum, auto #cool library for game states
 
 import pygame
 
+from bullet import Bullet
 from boss_ai import BossAI
 from difficulty import STORY_DIFFICULTIES
-from story_visuals import StoryHUD, scatter_wreckage, draw_shield, draw_gun_charge
+from story_visuals import StoryHUD, scatter_wreckage, draw_shield, draw_gun_charge, draw_collector_assembly
 from enemy import Enemy
 from settings import WIDTH, HEIGHT
 from ship_parts import ModularShip, load_explosion_frames
@@ -24,6 +26,8 @@ class StoryPhase(Enum):
     SECOND_DEFEAT = auto()
     COLLECTOR_FORMATION = auto()
     COLLECTOR_FIGHT = auto()
+    RETURN_TO_BASE = auto()
+    DOCKING = auto()
 
 
 class RecoveryStep(Enum):
@@ -46,7 +50,7 @@ class StoryMode:
     survival_retreat_duration = 2.65
     retreating_attack_duration = 15.0
     returning_charge_duration = 1.5
-    returning_damage_cooldown = 1.65
+    returning_damage_cooldown = 2.2
     survival_shield_cycle = 9.0
     survival_shield_duration = 5.0
     defeat_duration = 2.15
@@ -54,6 +58,21 @@ class StoryMode:
     explosion_frame_time = 0.048
     assembled_hitbox = (64, 64)
     cockpit_hitbox = (44, 44)
+    collector_speeds = (56, 77, 100)
+    collector_shields = ((7.2, 2.5), (6.3, 2.75), (5.4, 3.0))
+    collector_fire_intervals = (2.15, 1.72, 1.45)
+    collector_bullet_speeds = (195, 235, 265)
+    collector_windup = 0.65
+    collector_spawn_intervals = (2.8, 2.35, 1.9)
+    collector_minions = (('normal', 'interceptor', 'normal'),
+                         ('ranger', 'normal', 'tank', 'interceptor'),
+                         ('bomber', 'ranger', 'interceptor', 'tank', 'normal'))
+    collector_faults = (('DAMAGED_THRUSTERS', 'TARGETING_GLITCH'),
+                        ('WEAPON_OVERHEATING', 'ENGINE_STALLING', 'TARGETING_GLITCH'),
+                        ('REVERSED', 'SHIELD_MALFUNCTION', 'ENGINE_STALLING', 'WEAPON_OVERHEATING'))
+    collector_player_start = (WIDTH // 2, HEIGHT - 100)
+    dock_align_duration = 1.3
+    dock_fade_duration = 0.8
 
     def __init__(self, player, ship_sprites, difficulty='hard'):
         self.difficulty_settings = STORY_DIFFICULTIES[difficulty]
@@ -88,7 +107,7 @@ class StoryMode:
         self.debris_source = pygame.transform.scale(image, size)
         self.explosion_frames = load_explosion_frames()
         self.hull_loss_time = 0.0
-        self.hull_loss_duration = max(1.15, len(self.explosion_frames) * self.explosion_frame_time)
+        self.hull_loss_duration = max(1.4, len(self.explosion_frames) * self.explosion_frame_time + 0.35)
         player.rect.size = self.assembled_hitbox
         player.rect.center = player.position
 
@@ -185,20 +204,26 @@ class StoryMode:
         self.returning_cores = []
         self.returning_volley_fired = False
         self.collector = None
+        self.collector_phase = 1
+        self.dock_position = pygame.Vector2(WIDTH - 80, HEIGHT // 2)
+        dock = ship_sprites.load_image(Path(__file__).parent / 'assets' / 'images', 'docking_station')
+        self.dock_images = (dock, pygame.transform.flip(dock, True, False) if dock is not None else None)
         self.collector_formation_started = False
-        self.collector_formation_duration = 3.6
+        self.collector_formation_duration = 2.55
         self.collector_centre = pygame.Vector2(WIDTH // 2, HEIGHT // 2 - 60)
+        self.collector_entry_times = {}
         self.collector_core_starts = []
         self.collector_part_starts = []
         self.collector_part_angles = []
         self.collector_fragment_starts = []
     @property #decorator- allows controls_enabled to behave like an attribute instead of a method
     def controls_enabled(self):
-        return self.phase not in (StoryPhase.SCRIPTED_DEFEAT, StoryPhase.VICTORY, StoryPhase.SURVIVAL_COMPLETE, StoryPhase.SECOND_DEFEAT, StoryPhase.COLLECTOR_FORMATION)
+        return self.phase not in (StoryPhase.SCRIPTED_DEFEAT, StoryPhase.VICTORY, StoryPhase.SURVIVAL_COMPLETE, StoryPhase.SECOND_DEFEAT, StoryPhase.COLLECTOR_FORMATION, StoryPhase.DOCKING)
     
 
     def advance(self, dt, effects, audio):
         self.phase_time += dt
+        self.hud.update_gains(dt)
         self.repair_timer = max(0, self.repair_timer - dt)
         self.wave_clear_timer = max(0, self.wave_clear_timer - dt)
         self.shield_flash = max(0, self.shield_flash - dt)
@@ -216,7 +241,8 @@ class StoryMode:
         if self.phase == StoryPhase.SECOND_DEFEAT and self.phase_time >= self.defeat_duration:
             self.phase = StoryPhase.COLLECTOR_FORMATION
             self.phase_time = 0.0
-        if self.phase == StoryPhase.SURVIVAL_COMPLETE and self.phase_time >= self.survival_retreat_duration:
+        if (self.phase in (StoryPhase.SURVIVAL_COMPLETE, StoryPhase.RETURN_TO_BASE)
+                and self.phase_time >= self.survival_retreat_duration):
             self.departing_ships.clear()
 
     def opening_enemies(self, sprites):
@@ -228,12 +254,15 @@ class StoryMode:
             enemies.append(escort)
         return enemies
 
-    def create_returning_cores(self, ship_sprites):
+    def create_returning_cores(self, ship_sprites, player):
         self.returning_cores.clear()
+        y = 55 if player.position.y >= HEIGHT / 2 else HEIGHT - 55
+        left, right = 70, WIDTH - 70
+        rammer_x, flanker_x = (left, right) if player.position.x >= WIDTH / 2 else (right, left)
         formation = (
-            ('rammer', 160, 90, 300),
-            ('gunner', WIDTH // 2, 70, 220),
-            ('flanker', WIDTH - 160, 90, 280),
+            ('rammer', rammer_x, y, 185),
+            ('gunner', WIDTH // 2, y, 190),
+            ('flanker', flanker_x, y, 165),
         )
         for role, x, y, speed in formation:
             core = Enemy(x, y, 'adaptive_core')
@@ -245,14 +274,14 @@ class StoryMode:
             core.role = role
             core.speed = speed
             core.shield_flash = 0.0
-            core.fire_timer = 0.8 if role == 'gunner' else 1.5
+            core.fire_timer = 2.0 if role == 'gunner' else 2.8
             core.rect.size = (64, 64)
             core.rect.center = core.position
             self.returning_cores.append(core)
 
         return self.returning_cores
 
-    def start_returning_cores(self, enemies, bullets, enemy_bullets, ship_sprites, effects, audio):
+    def start_returning_cores(self, enemies, bullets, enemy_bullets, ship_sprites, player, effects, audio):
         if self.phase != StoryPhase.SURVIVAL_COMPLETE:
             return
 
@@ -266,7 +295,7 @@ class StoryMode:
         bullets.clear()
         enemy_bullets.clear()
 
-        cores = self.create_returning_cores(ship_sprites)
+        cores = self.create_returning_cores(ship_sprites, player)
         enemies.extend(cores)
         self.module_notice = 'THREE ADAPTIVE CORES INCOMING'
         self.module_notice_timer = 4.0
@@ -360,12 +389,15 @@ class StoryMode:
             audio.play('core_shot')
         audio.play('enemy_down')
 
-    def start_collector_formation(self,enemies,bullets,enemy_bullets,effects,audio):
+    def start_collector_formation(self,enemies,bullets,enemy_bullets,player,effects,audio):
         if self.phase != StoryPhase.COLLECTOR_FORMATION or self.collector_formation_started:
             return
         self.collector_formation_started = True
+        self.formation_cockpit_start = player.position.copy()
+        self.formation_core_image = pygame.transform.smoothscale(self.returning_cores[0].ship_image, (90, 90))
         self.collector_core_starts = [core.position.copy() for core in self.returning_cores]
         self.collector_part_starts = [part.position.copy() for part in self.ship.parts[1:]] #1: to exclude the cockpit
+        self.collector_part_angles = [part.angle for part in self.ship.parts[1:]]
         self.collector_fragment_starts = [fragment.position.copy() for fragment in self.wreckage]
 
         enemies.clear()
@@ -386,9 +418,10 @@ class StoryMode:
 
         for index, core in enumerate(self.returning_cores):
             angle = index *120 + progress * 180
-            target = self.collector.centre + pygame.Vector2(0,-35).rotate(angle)
+            target = self.collector_centre + pygame.Vector2(0,-35).rotate(angle)
 
-            core.position = self.collector_core_starts[index].lerp(target,eased)
+            arc = pygame.Vector2(0, -70).rotate(index * 120 + progress * 130)
+            core.position = self.collector_core_starts[index].lerp(target,eased) + arc * math.sin(math.pi * progress)
 
             core.rect.center = core.position
 
@@ -405,17 +438,19 @@ class StoryMode:
             radius = 15 + (index % 6) * 7
             target = self.collector_centre + pygame.Vector2(0,-radius).rotate(angle)
 
-            fragment.position = self.collector_fragment_starts[index].lerp(target,eased)
+            delay = (index % 5) * 0.045
+            travel = max(0, (progress - delay) / (1 - delay))
+            fragment.position = self.collector_fragment_starts[index].lerp(target, travel * travel * (3 - 2 * travel))
 
     def build_collector_image(self):
-        size = 220
-        image = pygame.Surface((size,size), pygame.SCRALPHA)
+        size = 176
+        image = pygame.Surface((size,size), pygame.SRCALPHA)
         centre = pygame.Vector2(size / 2, size / 2)
 
         for fragment in self.wreckage:
             rotated = pygame.transform.rotate(fragment.image, fragment.angle)
             position = centre + fragment.position - self.collector_centre
-            image.blit(rotated.get_rect(center=position))
+            image.blit(rotated, rotated.get_rect(center=position))
 
         for part in self.ship.parts[1:]:
             rotated = pygame.transform.rotate(part.image, part.angle)
@@ -442,10 +477,32 @@ class StoryMode:
         self.collector = Enemy(self.collector_centre.x, self.collector_centre.y, 'collector')
         self.collector.ship_image = image
         self.collector.is_boss = True
-        self.collector.speed = 65
-        self.collector.health = self.collector.max_health = 60
-        self.collector.rect.size = (150,150)
+        self.collector.rect.size = (104,104)
+        self.reset_collector_fight(enemies, player, effects, audio)
+
+    def reset_collector_fight(self, enemies, player, effects, audio):
+        self.collector_phase = 1
+        self.collector_cycle_time = 0.0
+        self.collector_fault_time = 0.0
+        self.collector_fault_slot = -1
+        self.collector_shot_timer = self.difficulty_settings['collector_interval_multiplier']
+        self.collector_volley = 0
+        self.collector_aim = pygame.Vector2(0, 1)
+        self.collector_pattern = ()
+        self.collector_spawn_timer = 0.0
+        self.collector_entry_times.clear()
+        self.collector_spawn_index = 0
+        self.collector_phase_spawn_index = 0
+        self.active_debuffs.clear()
+        self.shield_flash = 0.0
+        self.hull_loss_time = 0.0
+        self.phase_cloak_timer = self.phase_cloak_cooldown = self.rift_drive_cooldown = 0.0
+        self.collector.position.update(self.collector_centre)
+        self.collector.speed = self.collector_speeds[0]
+        self.collector.health = self.collector.max_health = 48
         self.collector.rect.center = self.collector.position
+        self.collector.hit_flash_timer = 0.0
+        self.collector.last_hit = -1000
 
         enemies.clear()
         enemies.append(self.collector)
@@ -454,9 +511,13 @@ class StoryMode:
         self.phase = StoryPhase.COLLECTOR_FIGHT
         self.phase_time = 0.0
 
-        player.position.update(WIDTH // 2, HEIGHT - 100)
+        player.position.update(self.collector_player_start)
+        player.recoil_velocity.update(0, 0)
+        player.rect.size = self.cockpit_hitbox
         player.rect.center = player.position
-        player.health = 3
+        player.health = self.difficulty_settings['collector_cockpit_health']
+        self.last_player_position.update(player.position)
+        self.player_velocity.update(0, 0)
 
         self.module_notice = "THE COLLECTOR HAS AWAKENED"
         self.module_notice_timer = 4.0
@@ -464,6 +525,204 @@ class StoryMode:
         effects.shake = max(effects.shake, 12)
         effects.sparks(self.collector.position, 40, (255,100,80)) 
         audio.play('boss_spawn')
+    @property
+    def collector_shielded(self):
+        period, duration = self.collector_shields[self.collector_phase - 1]
+        return self.collector_cycle_time >= period - duration
+
+    @property
+    def collector_shield_charging(self):
+        period, duration = self.collector_shields[self.collector_phase - 1]
+        return period - duration - 0.75 <= self.collector_cycle_time < period - duration
+
+    def update_collector_phase(self, effects, audio):
+        phase = 3 if self.collector.health <= 16 else 2 if self.collector.health <= 32 else 1
+        if phase != self.collector_phase:
+            self.collector_phase = phase
+            self.collector.speed = self.collector_speeds[phase - 1]
+            self.collector_cycle_time = self.collector_fault_time = 0.0
+            self.collector_fault_slot = -1
+            if effects.banner_heading == 'SYSTEM ERROR':
+                effects.banner_timer = 0.0
+            self.collector_volley = 0
+            self.collector_phase_spawn_index = 0
+            self.collector_pattern = ()
+            self.collector_shot_timer = 1.5
+            self.collector_spawn_timer = min(self.collector_spawn_timer, 1.0)
+            self.active_debuffs.clear()
+            self.module_notice = f'COLLECTOR PHASE {phase}'
+            self.module_notice_timer = 1.8
+            audio.play('boss_phase')
+
+    def update_collector_systems(self, dt, enemies, player, ship_sprites, effects, audio):
+        index = self.collector_phase - 1
+        period = self.collector_shields[index][0]
+        self.collector_cycle_time = (self.collector_cycle_time + dt) % period
+        self.collector_entry_times = {enemy: birth for enemy, birth in self.collector_entry_times.items()
+                                      if self.phase_time - birth < 0.65 and enemy in enemies}
+        self.collector_spawn_timer = max(0, self.collector_spawn_timer - dt)
+        if self.collector_spawn_timer == 0 and len(enemies) - 1 < self.collector_phase + 3:
+            kinds = self.collector_minions[index]
+            for _ in range(3 if self.collector_spawn_index == 0 else 1):
+                kind = kinds[self.collector_phase_spawn_index % len(kinds)]
+                minion = self._spawn_final_enemy(kind, player, ship_sprites)
+                self.collector_entry_times[minion] = self.phase_time
+                minion.entry_origin = minion.position.copy()
+                enemies.append(minion)
+                self.collector_spawn_index += 1
+                self.collector_phase_spawn_index += 1
+            self.collector_spawn_timer = self.collector_spawn_intervals[index] * self.difficulty_settings['collector_interval_multiplier']
+
+        self.collector_fault_time += dt
+        faults = self.collector_faults[index]
+        active_duration = (4, 6, 7)[index]
+        warning_duration = effects.banner_duration
+        cycle = warning_duration + active_duration + (6, 5, 4)[index]
+        elapsed = self.collector_fault_time - 2.5
+        if elapsed < 0 or elapsed % cycle >= warning_duration + active_duration:
+            self.active_debuffs.clear()
+            return
+
+        slot = int(elapsed // cycle)
+        fault = faults[slot % len(faults)]
+        if slot != self.collector_fault_slot:
+            self.collector_fault_slot = slot
+            self.active_debuffs.clear()
+            effects.malfunction_changed(fault)
+            audio.play('wave_fault')
+        elif effects.banner_timer <= 0:
+            self.active_debuffs.add(fault)
+
+    def move_and_fire_collector(self, dt, player, enemy_bullets, audio):
+        index = self.collector_phase - 1
+        core = self.collector
+        offset = core.position - player.position
+        radial = offset.normalize() if offset.length_squared() else pygame.Vector2(0, -1)
+        side = 1 if int(self.phase_time / 3.5) % 2 == 0 else -1
+        strafe = min(1, max(0, (offset.length() - 140) / 140))
+        target = player.position + radial.rotate(90) * side * strafe * (45, 55, 65)[index]
+        target.x = max(core.rect.width / 2, min(WIDTH - core.rect.width / 2, target.x))
+        target.y = max(core.rect.height / 2, min(HEIGHT - core.rect.height / 2, target.y))
+        core.position.move_towards_ip(target, dt * core.speed)
+        core.rect.center = core.position
+        core.hit_flash_timer = max(0.0, core.hit_flash_timer - dt)
+
+        self.collector_shot_timer -= dt
+        if not self.collector_pattern and self.collector_shot_timer <= self.collector_windup:
+            if core.position.distance_to(player.position) < 150:
+                self.collector_shot_timer = self.collector_windup
+                return
+            lead = self.difficulty_settings['collector_aim_lead']
+            aim = player.position + self.player_velocity * lead
+            aim.x = max(20, min(WIDTH - 20, aim.x))
+            aim.y = max(20, min(HEIGHT - 20, aim.y))
+            direction = aim - core.position
+            self.collector_aim = direction.normalize() if direction.length_squared() else -radial
+            self.collector_pattern = (0,) if index == 0 else (-18, 0, 18)
+            if index == 2 and self.collector_volley % 2:
+                self.collector_pattern = tuple(range(0, 360, 45))
+        if self.collector_shot_timer <= 0 and self.collector_pattern:
+            if core.position.distance_to(player.position) >= 130:
+                for angle in self.collector_pattern:
+                    direction = self.collector_aim.rotate(angle)
+                    bullet = Bullet(core.position + direction * 55, direction)
+                    bullet.speed = self.collector_bullet_speeds[index]
+                    bullet.is_collector_shot = True
+                    enemy_bullets.append(bullet)
+                audio.play('core_shot')
+            self.collector_volley += 1
+            self.collector_pattern = ()
+            self.collector_shot_timer = self.collector_fire_intervals[index] * self.difficulty_settings['collector_interval_multiplier']
+
+    def draw_collector_defences(self, surface):
+        centre = self.collector.position
+        if self.collector_shielded or self.collector_shield_charging:
+            radius = 91 + round(2 * math.sin(self.phase_time * 12))
+            if self.collector_shielded:
+                colour = (222, 255, 255) if self.shield_flash > 0 else (105, 226, 255)
+                pygame.draw.circle(surface, colour, centre, radius, 3)
+                pygame.draw.circle(surface, (48, 120, 165), centre, radius + 5, 1)
+            else:
+                bounds = pygame.Rect(0, 0, radius * 2, radius * 2)
+                bounds.center = centre
+                for i in range(4):
+                    angle = self.phase_time * 3 + i * math.pi / 2
+                    pygame.draw.arc(surface, (255, 187, 86), bounds, angle, angle + 0.7, 2)
+        if self.phase_time < 0.36:
+            progress = self.phase_time / 0.36
+            glow = pygame.Surface((280, 280))
+            brightness = 1 - progress
+            colour = (int(218 * brightness), int(101 * brightness), int(65 * brightness))
+            pygame.draw.circle(glow, colour, (140, 140), round(58 + 80 * progress), 3)
+            surface.blit(glow, glow.get_rect(center=centre), special_flags=pygame.BLEND_RGB_ADD)
+        if self.collector_pattern:
+            progress = 1 - max(0, self.collector_shot_timer) / self.collector_windup
+            for angle in self.collector_pattern:
+                direction = self.collector_aim.rotate(angle)
+                muzzle = centre + direction * 55
+                pygame.draw.line(surface, (255, 180, 75), muzzle, muzzle + direction * (10 + 20 * progress), 3)
+                pygame.draw.circle(surface, (255, 236, 157), muzzle, 3 + round(3 * progress))
+
+    def destroy_collector(self, enemies, bullets, enemy_bullets, player, effects, audio):
+        self.phase = StoryPhase.RETURN_TO_BASE
+        self.collector_entry_times.clear()
+        self.phase_time = 0.0
+        self.active_debuffs.clear()
+        self.collector_pattern = ()
+        self.departing_ships.clear()
+        self.queue_departures(enemy for enemy in enemies if enemy is not self.collector)
+        enemies.clear()
+        bullets.clear()
+        enemy_bullets.clear()
+        self.wreckage = scatter_wreckage(self.collector.ship_image, self.collector.position, 0)
+        if player.position.x > WIDTH / 2:
+            self.dock_position.x = 80
+        self.module_notice = 'COLLECTOR DESTROYED'
+        self.module_notice_timer = 2.0
+        effects.announce_objective('COLLECTOR DESTROYED', 'Return to base')
+        effects.shake = max(effects.shake, 10)
+        audio.play('wave_clear')
+
+    @property
+    def dock_beacon(self):
+        side = 1 if self.dock_position.x < WIDTH / 2 else -1
+        return self.dock_position + pygame.Vector2(36 * side, 0)
+
+    def update_docking(self, player, audio):
+        if self.phase == StoryPhase.RETURN_TO_BASE:
+            if self.phase_time < 1.2 or self.departing_ships or player.position.distance_to(self.dock_beacon) > 30:
+                return
+            self.phase = StoryPhase.DOCKING
+            self.phase_time = 0.0
+            self.dock_start = player.position.copy()
+            self.dock_start_angle = self.ship.angle
+            player.recoil_velocity.update(0, 0)
+            self.module_notice_timer = 0.0
+            audio.play('part_pickup')
+        if self.phase == StoryPhase.DOCKING:
+            progress = min(1, self.phase_time / self.dock_align_duration)
+            eased = progress * progress * (3 - 2 * progress)
+            player.position = self.dock_start.lerp(self.dock_position, eased)
+            player.rect.center = player.position
+            angle = 90 if self.dock_position.x < WIDTH / 2 else -90
+            turn = (angle - self.dock_start_angle + 180) % 360 - 180
+            self.ship.angle = self.dock_start_angle + turn * eased
+            if self.phase_time >= self.dock_align_duration + self.dock_fade_duration:
+                self.phase = StoryPhase.VICTORY
+                self.phase_time = 0.0
+                audio.play('part_attached')
+
+    def draw_dock(self, surface):
+        left = self.dock_position.x < WIDTH / 2
+        image = self.dock_images[int(left)]
+        if image is not None:
+            rect = image.get_rect(center=self.dock_position + pygame.Vector2(-20 if left else 20, 0))
+            surface.blit(image, rect)
+        if self.phase == StoryPhase.RETURN_TO_BASE:
+            pulse = (math.sin(self.phase_time * 4) + 1) / 2
+            pygame.draw.circle(surface, (75, 181, 177), self.dock_beacon, 22 + round(6 * pulse), 2)
+            pygame.draw.circle(surface, (164, 255, 219), self.dock_beacon, 15, 1)
+
     def update_boss(self, dt, player, firing, audio):
         if self.phase == StoryPhase.VICTORY:
             return
@@ -688,7 +947,13 @@ class StoryMode:
 
     def _spawn_final_enemy(self, kind, player, ship_sprites):
         positions = [(70, 70), (WIDTH - 70, 70), (70, HEIGHT - 70), (WIDTH - 70, HEIGHT - 70)]
-        if self.phase == StoryPhase.SURVIVAL:
+        if self.phase == StoryPhase.COLLECTOR_FIGHT:
+            gates = ((40, 140), (WIDTH - 40, 140), (40, HEIGHT - 110), (WIDTH - 40, HEIGHT - 110))
+            start = self.collector_spawn_index % len(gates)
+            candidates = gates[start:] + gates[:start]
+            x, y = next(point for point in candidates if player.position.distance_to(point) >= 310
+                        and all(enemy.entry_origin.distance_to(point) > 80 for enemy in self.collector_entry_times))
+        elif self.phase == StoryPhase.SURVIVAL:
             index = self.survival_spawn_index % len(positions)
             positions = positions[index:] + positions[:index]
             x, y = next((point for point in positions if player.position.distance_to(point) >= 140), positions[0])
@@ -751,6 +1016,10 @@ class StoryMode:
             self.departing_ships.append((pygame.transform.smoothscale(image, enemy.rect.size), enemy.position.copy()))
 
     def update_ship(self, player, aim, dt, effects):
+        if self.phase == StoryPhase.COLLECTOR_FORMATION:
+            progress = min(1.0, self.phase_time / self.collector_formation_duration)
+            player.position.update(self.formation_cockpit_start.lerp(self.collector_player_start, 1 - (1 - progress) ** 2))
+            player.rect.center = player.position
         self.ship.centre.update(player.position)
         if self.controls_enabled:
             direction = pygame.Vector2(aim) - player.position
@@ -796,6 +1065,9 @@ class StoryMode:
             draw_shield(surface, self.boss.rect.center, self.phase_time, self.shield_flash)
 
     def draw_ship(self, surface):
+        if self.phase == StoryPhase.COLLECTOR_FORMATION:
+            draw_collector_assembly(surface, self.collector_centre, self.returning_cores,
+                                    self.phase_time / self.collector_formation_duration)
         for fragment in self.wreckage:
             fragment.draw(surface)
         if self.phase == StoryPhase.RECOVERY:
@@ -803,14 +1075,20 @@ class StoryMode:
                 if not part.attached and not part.returning:
                     unlocked = self.recovery_step == RecoveryStep.PICKUP and part_id == self.objective_index + 1
                     self.hud.draw_part_marker(surface, part.position, self.ship.centre, self.phase_time, unlocked)
-        if self.phase == StoryPhase.COLLECTOR_FIGHT:
+        if self.phase in (StoryPhase.RETURN_TO_BASE, StoryPhase.DOCKING):
+            self.draw_dock(surface)
+            if self.phase == StoryPhase.RETURN_TO_BASE:
+                self.draw_explosion(surface, self.collector.position, self.phase_time)
+                self.hud.draw_departure(surface, self.departing_ships, self.phase_time, direction=-1)
+        if self.phase in (StoryPhase.COLLECTOR_FIGHT, StoryPhase.RETURN_TO_BASE, StoryPhase.DOCKING, StoryPhase.VICTORY):
             self.ship.parts[0].draw(surface)
+            return
         else:
             self.ship.draw(surface)
 
         if self.phase == StoryPhase.COLLECTOR_FORMATION:
             for core in self.returning_cores:
-                image = pygame.transform.smoothscale(core.ship_image,(90,90))
+                image = self.formation_core_image
                 surface.blit(image, image.get_rect(center=core.position))
         module_colours = {
             'RIFT_DRIVE': (155, 105, 255),
@@ -852,25 +1130,43 @@ class StoryMode:
 
     def animate_hull_loss(self, surface, player, dt, effects, audio):
         if self.hull_loss_time == 0.0:
-            self.wreckage = scatter_wreckage(self.debris_source, player.position, self.ship.angle)
+            source = self.debris_source
+            if self.phase == StoryPhase.COLLECTOR_FIGHT:
+                source = self.ship.parts[0].image
+            self.wreckage = scatter_wreckage(source, player.position, self.ship.angle)
             effects.sparks(player.position, 32, (255, 170, 70))
             audio.play('enemy_down')
         for fragment in self.wreckage:
             fragment.update(dt)
             fragment.draw(surface)
         self.draw_explosion(surface, player.position, self.hull_loss_time)
+        if self.hull_loss_time < 0.32:
+            progress = self.hull_loss_time / 0.32
+            radius = round(22 + 53 * progress)
+            glow = pygame.Surface((160, 160), pygame.SRCALPHA)
+            pygame.draw.circle(glow, (255, 165, 92, round(180 * (1 - progress))), (80, 80), radius, 3)
+            surface.blit(glow, glow.get_rect(center=player.position))
         self.hull_loss_time += dt
 
     def resource_limits(self, health_limit, ammo_limit):
         if 'REINFORCED_ARMOUR' in self.recovered_upgrades:
             health_limit += 1
+        if self.phase in (StoryPhase.COLLECTOR_FIGHT, StoryPhase.RETURN_TO_BASE, StoryPhase.DOCKING):
+            health_limit = min(health_limit, self.difficulty_settings['collector_cockpit_health'])
+            ammo_limit = max(ammo_limit, math.ceil(self.collector.max_health * self.difficulty_settings['collector_ammo_per_hp']))
         if 'EXPANDED_MAGAZINE' in self.recovered_upgrades:
             ammo_limit += 4
         return max(1, health_limit), max(1, ammo_limit)
 
     def progress_percent(self):
-        if self.phase in (StoryPhase.SURVIVAL_COMPLETE, StoryPhase.VICTORY):
+        if self.phase == StoryPhase.VICTORY:
             return 100
+        if self.phase in (StoryPhase.RETURN_TO_BASE, StoryPhase.DOCKING):
+            return 99
+        if self.phase == StoryPhase.COLLECTOR_FIGHT:
+            return 88 + int(10 * (1 - self.collector.health / self.collector.max_health))
+        if self.phase in (StoryPhase.SURVIVAL_COMPLETE, StoryPhase.RETURNING_CORES, StoryPhase.SECOND_DEFEAT, StoryPhase.COLLECTOR_FORMATION):
+            return 88
         if self.phase == StoryPhase.OPENING:
             return 0
         completed = 1 + len(self.rewarded_parts)
@@ -879,7 +1175,7 @@ class StoryMode:
             completed += self.objective_progress / (target + 1)
         elif self.phase == StoryPhase.SURVIVAL:
             completed += self.phase_time / self.survival_duration
-        return min(99, int(100 * completed / (len(self.objectives) + 2)))
+        return min(99, int(100 * completed / (len(self.objectives) + 3)))
 
     def draw_hud(self, screen, player, ammo, health_limit, ammo_limit, debuff, description, heat_percent, overheated):
         self.hud.draw(screen, self, player.health, ammo, health_limit, ammo_limit, debuff, description, heat_percent, overheated)
@@ -1001,13 +1297,15 @@ class StoryMode:
             self.wave_active_enemies = []
 
             self.active_debuffs.clear()
-            self.active_debuffs.add(objective['debuff'])
             debuff_name = objective['debuff'].replace('_', ' ')
             if objective['debuff'] == 'REVERSED':
                 debuff_name = 'INVERTED CONTROLS'
             effects.announce_objective(f'SURVIVE WAVE {self.objective_index + 1}',
                                        f"Defeat {objective['target']} enemies  |  {debuff_name}")
             audio.play('wave_fault')
+
+        if effects.banner_timer <= 0:
+            self.active_debuffs.add(objective['debuff'])
 
         self.wave_spawn_timer += dt
 

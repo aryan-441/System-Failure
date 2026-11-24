@@ -65,6 +65,57 @@ def draw_shield(screen, position, age, flash):
     screen.blit(aura, aura.get_rect(center=position))
 
 
+def draw_collector_assembly(screen, centre, cores, progress):
+    progress = min(1, progress)
+    glow = pygame.Surface((280, 280))
+    origin = pygame.Vector2(140, 140)
+    intensity = math.sin(progress * math.pi) ** 0.7
+    radius = round(116 - progress * 74)
+    for size in range(125, 0, -6):
+        light = int(42 * intensity * (1 - size / 126) ** 2)
+        pygame.draw.circle(glow, (light, light // 4, light // 2), origin, size)
+    arc_rect = pygame.Rect(0, 0, radius * 2, radius * 2)
+    arc_rect.center = origin
+    for index in range(3):
+        angle = index * math.tau / 3 + progress * 3.8
+        pygame.draw.arc(glow, (165, 70, 94), arc_rect, angle, angle + 0.75, 2)
+        for spark in range(4):
+            travel = (progress * 1.7 + spark / 4) % 1
+            direction = pygame.Vector2(1, 0).rotate_rad(angle - travel * 0.8)
+            tip = origin + direction * (radius + 28 - travel * 65)
+            pygame.draw.line(glow, (196, 104, 74), tip, tip + direction.rotate(18) * 6, 2)
+    if progress > 0.85:
+        pulse = (progress - 0.85) / 0.15
+        pygame.draw.circle(glow, (190, 125, 84), origin, round(18 + 91 * pulse), 2)
+    screen.blit(glow, glow.get_rect(center=centre), special_flags=pygame.BLEND_RGB_ADD)
+    for core in cores:
+        inward = centre - core.position
+        if inward.length_squared() > 70 ** 2:
+            tail = inward.normalize() * (10 + 24 * intensity)
+            pygame.draw.line(screen, (125, 65, 91), core.position - tail * 2, core.position, 3)
+            pygame.draw.line(screen, (246, 169, 114), core.position - tail, core.position, 2)
+
+
+def draw_minion_arrival(screen, enemy, age):
+    progress = min(1, age / 0.65)
+    glow = pygame.Surface((120, 100))
+    origin = pygame.Vector2(60, 50)
+    intensity = 1 - progress
+    width = round(20 + 65 * progress)
+    height = round(55 * intensity + 7)
+    ring = pygame.Rect(0, 0, width, height)
+    ring.center = origin
+    for pad, blue in ((16, 40), (8, 85), (0, 225)):
+        colour = (int(blue * intensity * 0.42), int(blue * intensity * 0.72), int(blue * intensity))
+        pygame.draw.ellipse(glow, colour, ring.inflate(pad, pad), 2 if pad == 0 else 4)
+    for offset in (-12, 0, 12):
+        start = origin + (0, offset)
+        heading = 1 if enemy.entry_origin.x < WIDTH / 2 else -1
+        tip = start + (heading * (12 + 34 * progress), 0)
+        pygame.draw.line(glow, (int(90 * intensity), int(180 * intensity), int(240 * intensity)), start, tip, 2)
+    screen.blit(glow, glow.get_rect(center=enemy.entry_origin), special_flags=pygame.BLEND_RGB_ADD)
+
+
 def draw_gun_charge(screen, position, target, progress):
     direction = target - position
     if direction.length_squared() == 0:
@@ -93,6 +144,30 @@ class StoryHUD:
         self.label = pygame.font.Font(None, 18)
         self.body = pygame.font.Font(None, 23)
         self.title = pygame.font.Font(None, 30)
+        self.ending_title = pygame.font.Font(None, 64)
+        self.gains = {}
+        self.gain_duration = 0.85
+
+    def add_gain(self, label, amount):
+        if amount > 0:
+            previous, _ = self.gains.get(label, (0, 0))
+            self.gains[label] = (previous + amount, self.gain_duration)
+
+    def update_gains(self, dt):
+        self.gains = {label: (amount, time - dt) for label, (amount, time) in self.gains.items()
+                      if time > dt}
+
+    def draw_victory(self, screen):
+        screen.fill((8, 19, 34))
+        for font, text, colour, y in (
+            (self.ending_title, 'MISSION ACCOMPLISHED', (114, 239, 207), 151),
+            (self.title, 'THE COLLECTOR HAS BEEN DESTROYED', (231, 241, 247), 220),
+            (self.body, 'You survived the System Failure.', (194, 215, 225), 271),
+            (self.body, 'Cockpit recovered. Returned to base safely.', (194, 215, 225), 300),
+            (self.body, 'R  Replay Story Mode      A  Play Arcade Mode      Esc  Main menu', (114, 239, 207), 399),
+        ):
+            line = font.render(text, True, colour)
+            screen.blit(line, line.get_rect(center=(WIDTH // 2, y)))
 
     def draw_part_marker(self, surface, position, ship, age, unlocked):
         colour = (110, 249, 206) if unlocked else (116, 138, 158)
@@ -124,28 +199,33 @@ class StoryHUD:
             pygame.draw.line(aura, green, (x, y-4), (x, y+4), 3)
         surface.blit(aura, aura.get_rect(center=position))
 
-    def draw_departure(self, screen, ships, age):
+    def draw_departure(self, screen, ships, age, direction=1):
+        exit_x = WIDTH + 160 if direction > 0 else -160
         for index, (image, origin) in enumerate(ships):
             time = max(0, age - 0.24 - index * 0.09)
             progress = min(1, time / 1.45)
             thrust = progress ** 2
             lift = math.sin(progress * math.pi) * (36 + 8 * index)
-            x = origin.x + (WIDTH + 160 - origin.x) * thrust
+            x = origin.x + (exit_x - origin.x) * thrust
             y = origin.y - lift
             plume = round(5 + 95 * thrust)
-            nozzle = pygame.Vector2(x - image.get_width() * 0.36, y)
+            nozzle = pygame.Vector2(x - direction * image.get_width() * 0.36, y)
             if time > 0:
                 for offset in (-7, 7):
                     tip = nozzle + (0, offset)
-                    pygame.draw.polygon(screen, (45, 123, 172), [tip + (1, -4), tip - (plume, 0), tip + (1, 4)])
-                    pygame.draw.line(screen, (173, 250, 255), tip, tip - (plume * 0.65, 0), 2)
-            banked = pygame.transform.rotozoom(image, -14 * math.sin(progress * math.pi), 1)
+                    pygame.draw.polygon(screen, (45, 123, 172), [tip + (direction, -4), tip - (direction * plume, 0), tip + (direction, 4)])
+                    pygame.draw.line(screen, (173, 250, 255), tip, tip - (direction * plume * 0.65, 0), 2)
+            banked = pygame.transform.rotozoom(image, -direction * 14 * math.sin(progress * math.pi), 1)
             screen.blit(banked, banked.get_rect(center=(round(x), round(y))))
 
     def meter(self, surface, x, label, value, limit, colour):
         surface.blit(self.label.render(label, True, colour), (x, 7))
         number = self.body.render(f'{value} / {limit}', True, (237, 244, 246))
         surface.blit(number, number.get_rect(topright=(x+122, 4)))
+        if limit > 40:
+            pygame.draw.rect(surface, (49, 66, 82), (x, 26, 122, 5))
+            pygame.draw.rect(surface, colour, (x, 26, round(122 * value / limit), 5))
+            return
         for i in range(limit):
             left = x + i * 122 // limit
             right = x + (i+1) * 122 // limit
@@ -177,7 +257,7 @@ class StoryHUD:
         elif phase in ('RETURNING_CORES', 'SECOND_DEFEAT'):
             heading = 'FINAL ENCOUNTER   /   CORE AMBUSH'
             if phase == 'SECOND_DEFEAT':
-                title, detail = 'Hull breached', 'Ship systems offline'
+                title, detail = 'Cockpit separating', 'Emergency ejection'
             elif story.phase_time >= story.retreating_attack_duration - story.returning_charge_duration:
                 title, detail = 'Volley charging', 'Three shielded Cores'
             else:
@@ -193,8 +273,18 @@ class StoryHUD:
         elif phase == 'COLLECTOR_FIGHT':
             heading = 'FINAL ENCOUNTER   /   THE COLLECTOR'
             title = 'DEFEAT THE COLLECTOR'
-            detail = f'Integrity: {story.collector_health} / {story.collector.max_health}'
+            shield = 'SHIELD ACTIVE' if story.collector_shielded else 'SHIELD CHARGING' if story.collector_shield_charging else 'SHIELD DOWN'
+            detail = f'Phase {story.collector_phase}   /   {shield}'
             accent = (255,105,130)
+        elif phase in ('RETURN_TO_BASE', 'DOCKING'):
+            heading = 'EXTRACTION   /   HOME STATION'
+            if phase == 'RETURN_TO_BASE':
+                title = 'Return to base'
+                edge = 'left' if story.dock_position.x < WIDTH / 2 else 'right'
+                detail = f'Fly to the green beacon on the {edge}'
+            else:
+                title, detail = 'Docking', 'Aligning cockpit with berth'
+            accent = teal
         elif final_boss:
             heading = 'ENCOUNTER   /   SYSTEM CORE'
             if phase == 'VICTORY':
@@ -263,25 +353,30 @@ class StoryHUD:
             label = self.label.render(integrity, True, (255, 190, 205))
             screen.blit(label, label.get_rect(midbottom=(WIDTH // 2, 20)))
 
-            if phase == 'COLLECTOR_FIGHT' and story.collector is not None:
-                bar_width = 340
-                bar = pygame.Rect(WIDTH // 2 - bar_width // 2, 24, bar_width, 14)
-
-                pygame.draw.rect(screen, (55,35,50), bar, border_radius=5)
-
-                fill = round(bar_width * max(0, story.collector.health) / story.collector.max_health)
-
-                if fill > 0:
-                    pygame.draw.rect(screen, (255,75,95), (bar.x, bar.y, fill, bar.height), border_radius=5)
-
-                label = self.label.render('THE COLLECTOR: CORE INTEGRITY', True, (255,190,205))
-                screen.blit(label,label.get_rect(midbottom=(WIDTH // 2, 20)))
+        elif phase == 'COLLECTOR_FIGHT':
+            bar_width = 340
+            bar = pygame.Rect(WIDTH // 2 - bar_width // 2, 24, bar_width, 14)
+            pygame.draw.rect(screen, (55,35,50), bar, border_radius=5)
+            fill = round(bar_width * max(0, story.collector.health) / story.collector.max_health)
+            if fill > 0:
+                colour = (105,226,255) if story.collector_shielded else (255,75,95)
+                pygame.draw.rect(screen, colour, (bar.x, bar.y, fill, bar.height), border_radius=5)
+            integrity = f'THE COLLECTOR   {story.collector.health} / {story.collector.max_health}'
+            label = self.label.render(integrity, True, (255,190,205))
+            screen.blit(label,label.get_rect(midbottom=(WIDTH // 2, 20)))
 
         dock = pygame.Surface((WIDTH, 42), pygame.SRCALPHA)
         dock.fill((7, 16, 30, 233))
         pygame.draw.line(dock, (57, 83, 100), (0,0), (WIDTH,0))
         self.meter(dock, 18, 'HULL', health, hp_limit, amber if health <= 2 else teal)
         self.meter(dock, 164, 'AMMO', ammo, ammo_limit, amber if ammo <= 3 else (130, 196, 253))
+        for x, label, colour in ((18, 'HULL', teal), (164, 'AMMO', (130, 196, 253))):
+            if label in self.gains:
+                amount, time = self.gains[label]
+                gain = self.body.render(f'+{amount}', True, colour)
+                gain.set_alpha(round(255 * min(1, time / 0.35)))
+                y = HEIGHT - 52 - round(14 * (1 - time / self.gain_duration))
+                screen.blit(gain, gain.get_rect(midbottom=(x + 104, y)))
         if recovery:
             dock.blit(self.label.render('COMPONENTS', True, muted), (318, 6))
             for index, part in enumerate(story.ship.parts[1:]):
