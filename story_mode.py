@@ -23,6 +23,8 @@ class StoryPhase(Enum):
     RETURNING_CORES = auto()
     SECOND_DEFEAT = auto()
     COLLECTOR_FORMATION = auto()
+    COLLECTOR_FIGHT = auto()
+
 
 class RecoveryStep(Enum):
     OBJECTIVE = auto()
@@ -182,7 +184,7 @@ class StoryMode:
 
         self.returning_cores = []
         self.returning_volley_fired = False
-
+        self.collector = None
         self.collector_formation_started = False
         self.collector_formation_duration = 3.6
         self.collector_centre = pygame.Vector2(WIDTH // 2, HEIGHT // 2 - 60)
@@ -405,6 +407,63 @@ class StoryMode:
 
             fragment.position = self.collector_fragment_starts[index].lerp(target,eased)
 
+    def build_collector_image(self):
+        size = 220
+        image = pygame.Surface((size,size), pygame.SCRALPHA)
+        centre = pygame.Vector2(size / 2, size / 2)
+
+        for fragment in self.wreckage:
+            rotated = pygame.transform.rotate(fragment.image, fragment.angle)
+            position = centre + fragment.position - self.collector_centre
+            image.blit(rotated.get_rect(center=position))
+
+        for part in self.ship.parts[1:]:
+            rotated = pygame.transform.rotate(part.image, part.angle)
+            position = centre + part.position - self.collector_centre
+            image.blit(rotated, rotated.get_rect(center=position))
+
+        for core in self.returning_cores:
+            core_image = pygame.transform.smoothscale(core.ship_image, (90,90))
+            position = centre + core.position - self.collector_centre
+            image.blit(core_image, core_image.get_rect(center=position))
+
+        return image
+
+
+    def start_collector_fight(self, enemies, player, effects, audio):
+        if self.phase != StoryPhase.COLLECTOR_FORMATION:
+            return
+        if self.phase_time < self.collector_formation_duration:
+            return
+
+        self.update_collector_formation()
+        image = self.build_collector_image()
+
+        self.collector = Enemy(self.collector_centre.x, self.collector_centre.y, 'collector')
+        self.collector.ship_image = image
+        self.collector.is_boss = True
+        self.collector.speed = 65
+        self.collector.health = self.collector.max_health = 60
+        self.collector.rect.size = (150,150)
+        self.collector.rect.center = self.collector.position
+
+        enemies.clear()
+        enemies.append(self.collector)
+        self.wreckage.clear()
+
+        self.phase = StoryPhase.COLLECTOR_FIGHT
+        self.phase_time = 0.0
+
+        player.position.update(WIDTH // 2, HEIGHT - 100)
+        player.rect.center = player.position
+        player.health = 3
+
+        self.module_notice = "THE COLLECTOR HAS AWAKENED"
+        self.module_notice_timer = 4.0
+
+        effects.shake = max(effects.shake, 12)
+        effects.sparks(self.collector.position, 40, (255,100,80)) 
+        audio.play('boss_spawn')
     def update_boss(self, dt, player, firing, audio):
         if self.phase == StoryPhase.VICTORY:
             return
@@ -744,7 +803,10 @@ class StoryMode:
                 if not part.attached and not part.returning:
                     unlocked = self.recovery_step == RecoveryStep.PICKUP and part_id == self.objective_index + 1
                     self.hud.draw_part_marker(surface, part.position, self.ship.centre, self.phase_time, unlocked)
-        self.ship.draw(surface)
+        if self.phase == StoryPhase.COLLECTOR_FIGHT:
+            self.ship.parts[0].draw(surface)
+        else:
+            self.ship.draw(surface)
 
         if self.phase == StoryPhase.COLLECTOR_FORMATION:
             for core in self.returning_cores:
