@@ -36,7 +36,6 @@ class StoryMode:
     charge_duration = 1.5
     opening_shot_interval = 1.2
     charged_shot_interval = 0.65
-    opening_follow_distance = 240
     opening_pursuit_start = 14.0
     opening_rapid_fire_start = 8.0
     final_shot_interval = 1.8
@@ -46,8 +45,8 @@ class StoryMode:
     retreating_attack_duration = 15.0
     returning_charge_duration = 1.5
     returning_damage_cooldown = 1.65
-    survival_shield_cycle = 6.0
-    survival_shield_duration = 1.0
+    survival_shield_cycle = 9.0
+    survival_shield_duration = 5.0
     defeat_duration = 2.15
     scatter_duration = 0.95
     explosion_frame_time = 0.048
@@ -182,8 +181,15 @@ class StoryMode:
         self.phase_cloak_cooldown = 0.0
 
         self.returning_cores = []
-        self.returning_core_ai ={}
         self.returning_volley_fired = False
+
+        self.collector_formation_started = False
+        self.collector_formation_duration = 3.6
+        self.collector_centre = pygame.Vector2(WIDTH // 2, HEIGHT // 2 - 60)
+        self.collector_core_starts = []
+        self.collector_part_starts = []
+        self.collector_part_angles = []
+        self.collector_fragment_starts = []
     @property #decorator- allows controls_enabled to behave like an attribute instead of a method
     def controls_enabled(self):
         return self.phase not in (StoryPhase.SCRIPTED_DEFEAT, StoryPhase.VICTORY, StoryPhase.SURVIVAL_COMPLETE, StoryPhase.SECOND_DEFEAT, StoryPhase.COLLECTOR_FORMATION)
@@ -220,35 +226,27 @@ class StoryMode:
             enemies.append(escort)
         return enemies
 
-    def create_returning_cores(self,ship_sprites):
+    def create_returning_cores(self, ship_sprites):
         self.returning_cores.clear()
-        self.returning_core_ai.clear()
-
-        positions = [
-            (160,90),
-            (WIDTH // 2, 70),
-            (WIDTH - 160,90),
-        ]
-
-        for x,y in positions:
-            core = Enemy(x,y,'adaptive_core')
+        formation = (
+            ('rammer', 160, 90, 300),
+            ('gunner', WIDTH // 2, 70, 220),
+            ('flanker', WIDTH - 160, 90, 280),
+        )
+        for role, x, y, speed in formation:
+            core = Enemy(x, y, 'adaptive_core')
             core.ship_image = ship_sprites.adaptive_image
             core.is_boss = True
             core.is_adaptive_boss = True
             core.is_story_invulnerable = True
             core.health = core.max_health = 9
-            core.speed = (235, 185, 210)[len(self.returning_cores)]
+            core.role = role
+            core.speed = speed
             core.shield_flash = 0.0
-            core.movement_timer = (0.75, 0.0, 1.35)[len(self.returning_cores)]
-            core.movement_target = core.position.copy()
-            core.ramming = False
-            core.ram_windup = 0.0
-            core.fire_timer = 0.9 + len(self.returning_cores) * 0.45 # some fine tuning
-            core.rect.size = (64,64)
+            core.fire_timer = 0.8 if role == 'gunner' else 1.5
+            core.rect.size = (64, 64)
             core.rect.center = core.position
-
             self.returning_cores.append(core)
-            self.returning_core_ai[core] = BossAI()
 
         return self.returning_cores
 
@@ -282,70 +280,30 @@ class StoryMode:
             self.player_velocity = self.player_velocity.lerp(velocity, min(1, dt * 12))
         self.last_player_position.update(player.position)
 
-    def update_returning_core(self,core,dt,player,firing):
+    def update_returning_core(self, core, dt, player):
         if self.phase != StoryPhase.RETURNING_CORES:
             return
 
-        ai = self.returning_core_ai[core]
-        core.fire_timer -= dt
-        ai.record_player(dt,player.position,firing,core.health,core.max_health)
-
-        index = self.returning_cores.index(core)
         core.shield_flash = max(0.0, core.shield_flash - dt)
-        if core.ram_windup > 0:
-            core.ram_windup = max(0.0, core.ram_windup - dt)
-            if core.ram_windup > 0:
-                return
-        core.movement_timer -= dt
-        if core.movement_timer <= 0:
-            self.choose_returning_maneuver(core, index, player, ai.strategy)
-            if core.ram_windup > 0:
-                return
+        core.fire_timer -= dt
+        target = player.position.copy()
+        if core.role == 'gunner':
+            # Circle the player while firing, even if the player holds still.
+            angle = self.phase_time * 52 - 90
+            target += pygame.Vector2(230, 0).rotate(angle)
+        elif core.role == 'flanker':
+            # Cut across the escape route, then close from the rammer's far side.
+            target += self.player_velocity * 0.45
+            if self.phase_time % 3.2 < 1.2:
+                rammer = self.returning_cores[0]
+                far_side = player.position - rammer.position
+                if far_side.length_squared() > 0:
+                    target += far_side.normalize() * 135
 
-        target = core.movement_target
-        away = core.position - player.position
-        if index == 1 and 0 < away.length_squared() < 125 ** 2:
-            target = player.position + away.normalize() * 145
-            target.x = max(36, min(WIDTH - 36, target.x))
-            target.y = max(36, min(HEIGHT - 36, target.y))
-        speed = core.speed
-        if core.ramming:
-            core.speed *= 1.10
-        core.update(min(dt, core.position.distance_to(target) / core.speed), target)
-        core.speed = speed
-
-    def choose_returning_maneuver(self, core, index, player, strategy):
-        if index == 1:
-            positions = (pygame.Vector2(WIDTH / 2, 95),
-                         pygame.Vector2(WIDTH - 95, HEIGHT / 2),
-                         pygame.Vector2(WIDTH / 2, HEIGHT - 95),
-                         pygame.Vector2(95, HEIGHT / 2))
-            core.movement_target = min(positions, key=lambda point: (
-                abs(point.distance_to(player.position) - 235)
-                + point.distance_to(core.position) * 0.25
-                - min(point.distance_to(other.position) for other in self.returning_cores if other is not core) * 0.35
-            ))
-            core.movement_timer = 1.1
-        elif core.ramming:
-            core.ramming = False
-            core.movement_timer = (2.15 if index == 0 else 2.40)
-            x = WIDTH * (0.22 if index == 0 else 0.78)
-            y = max(95, min(HEIGHT - 95, player.position.y + (95 if index == 0 else -95)))
-            core.movement_target.update(x, y)
-        elif any(other.ramming for other in self.returning_cores if other is not core):
-            core.movement_timer = 0.15
-        else:
-            lead = 0.12 if index == 0 else (0.42 if strategy == 'MOBILE' else 0.30)
-            target = player.position + self.player_velocity * lead
-            approach = target - core.position
-            if approach.length_squared() > 0:
-                target += approach.normalize() * 30
-            target.x = max(36, min(WIDTH - 36, target.x))
-            target.y = max(36, min(HEIGHT - 36, target.y))
-            core.movement_target = target
-            core.movement_timer = min(1.55, max(0.45, core.position.distance_to(target) / (core.speed * 1.10)))
-            core.ram_windup = 0.55
-            core.ramming = True
+        target.x = max(core.rect.width / 2, min(WIDTH - core.rect.width / 2, target.x))
+        target.y = max(core.rect.height / 2, min(HEIGHT - core.rect.height / 2, target.y))
+        core.position.move_towards_ip(target, core.speed * dt)
+        core.rect.center = core.position
 
     def aim_returning_core_shot(self, core, player, speed):
         offset = player.position - core.position
@@ -361,9 +319,6 @@ class StoryMode:
         return target - core.position
 
     def draw_returning_core_defences(self, surface, core, player, bullets):
-        if core.ram_windup > 0:
-            pygame.draw.line(surface, (185, 75, 94), core.position, core.movement_target, 2)
-            pygame.draw.circle(surface, (255, 135, 138), core.movement_target, 7, 2)
         incoming = any(
             bullet.position.distance_squared_to(core.position) <= 96 ** 2
             and bullet.direction.dot(core.position - bullet.position) > 0
@@ -402,6 +357,54 @@ class StoryMode:
         if self.returning_volley_fired:
             audio.play('core_shot')
         audio.play('enemy_down')
+
+    def start_collector_formation(self,enemies,bullets,enemy_bullets,effects,audio):
+        if self.phase != StoryPhase.COLLECTOR_FORMATION or self.collector_formation_started:
+            return
+        self.collector_formation_started = True
+        self.collector_core_starts = [core.position.copy() for core in self.returning_cores]
+        self.collector_part_starts = [part.position.copy() for part in self.ship.parts[1:]] #1: to exclude the cockpit
+        self.collector_fragment_starts = [fragment.position.copy() for fragment in self.wreckage]
+
+        enemies.clear()
+        bullets.clear()
+        enemy_bullets.clear()
+
+        self.module_notice = 'THE COLLECTOR IS FORMING'
+        self.module_notice_timer = self.collector_formation_duration
+        effects.shake = max(effects.shake, 8)
+        audio.play('boss_phase')
+
+    def update_collector_formation(self):
+        if self.phase != StoryPhase.COLLECTOR_FORMATION or not self.collector_formation_started:
+            return
+
+        progress = min(1.0, self.phase_time / self.collector_formation_duration)
+        eased = progress * progress * (3-2 * progress) #smoothstep func
+
+        for index, core in enumerate(self.returning_cores):
+            angle = index *120 + progress * 180
+            target = self.collector.centre + pygame.Vector2(0,-35).rotate(angle)
+
+            core.position = self.collector_core_starts[index].lerp(target,eased)
+
+            core.rect.center = core.position
+
+        for index, part in enumerate(self.ship.parts[1:]):
+            angle = index * 60 + progress * 180
+            target = self.collector_centre + pygame.Vector2(0,-65).rotate(angle)
+
+            part.position = self.collector_part_starts[index].lerp(target,eased)
+
+            part.angle = self.collector_part_angles[index] + progress * 240
+
+        for index, fragment in enumerate(self.wreckage):
+            angle = index * 360 / len(self.wreckage) + progress * 180
+            radius = 15 + (index % 6) * 7
+            target = self.collector_centre + pygame.Vector2(0,-radius).rotate(angle)
+
+            fragment.position = self.collector_fragment_starts[index].lerp(target,eased)
+
     def update_boss(self, dt, player, firing, audio):
         if self.phase == StoryPhase.VICTORY:
             return
@@ -414,12 +417,10 @@ class StoryMode:
         if changed and self.phase == StoryPhase.OPENING:
             audio.play('warning')
         if self.phase == StoryPhase.OPENING:
-            if self.phase_time >= self.opening_pursuit_start:
-                self.boss.speed = player.speed * 1.1
-                self.boss.update(dt, player.position)
-            elif player.position.distance_to(self.boss.position) > self.opening_follow_distance:
-                self.boss.update(dt, player.position)
-        elif player.position.distance_to(self.boss.position) > 260:
+            speed_factor = 1.1 if self.phase_time >= self.opening_pursuit_start else 0.85
+            self.boss.speed = player.speed * speed_factor
+            self.boss.update(dt, player.position)
+        elif self.phase == StoryPhase.SURVIVAL or player.position.distance_to(self.boss.position) > 260:
             movement_phase = self.final_boss_phase if self.phase == StoryPhase.FINAL_BOSS else self.boss_ai.phase
             self.boss.update(dt, player.position, self.boss_ai.strategy, movement_phase)
         arena = pygame.Rect(0, 0, WIDTH, HEIGHT)
@@ -697,6 +698,8 @@ class StoryMode:
             if direction.length_squared() > 0:
                 self.ship.angle = math.degrees(math.atan2(-direction.y, direction.x)) - 90
         self.ship.update(dt)
+        if self.phase == StoryPhase.COLLECTOR_FORMATION:
+            self.update_collector_formation()
         if self.phase == StoryPhase.SCRIPTED_DEFEAT or self.part_origins:
             progress = min(1, self.phase_time / self.scatter_duration) if self.phase == StoryPhase.SCRIPTED_DEFEAT else 1
             for part, origin, (x,y) in zip(self.ship.parts[1:], self.part_origins, self.part_locations):
@@ -742,6 +745,11 @@ class StoryMode:
                     unlocked = self.recovery_step == RecoveryStep.PICKUP and part_id == self.objective_index + 1
                     self.hud.draw_part_marker(surface, part.position, self.ship.centre, self.phase_time, unlocked)
         self.ship.draw(surface)
+
+        if self.phase == StoryPhase.COLLECTOR_FORMATION:
+            for core in self.returning_cores:
+                image = pygame.transform.smoothscale(core.ship_image,(90,90))
+                surface.blit(image, image.get_rect(center=core.position))
         module_colours = {
             'RIFT_DRIVE': (155, 105, 255),
             'SIEGE_CANNON': (255, 150, 75),
