@@ -183,8 +183,20 @@ class StoryHUD:
             else:
                 title, detail = 'Evade the Cores', 'Three shielded Cores'
             accent = (255, 105, 130)
+
+        elif phase == 'COLLECTOR_FORMATION':
+            heading = 'FINAL ENCOUNTER   /   THE COLLECTOR'
+            title = 'The Collector is forming'
+            detail = 'Ship wreckage is being assimilated'
+            accent = (255,105,130)
+
+        elif phase == 'COLLECTOR_FIGHT':
+            heading = 'FINAL ENCOUNTER   /   THE COLLECTOR'
+            title = 'DEFEAT THE COLLECTOR'
+            detail = f'Integrity: {story.collector_health} / {story.collector.max_health}'
+            accent = (255,105,130)
         elif final_boss:
-            heading = 'FINAL ENCOUNTER   /   SYSTEM CORE'
+            heading = 'ENCOUNTER   /   SYSTEM CORE'
             if phase == 'VICTORY':
                 title, detail = 'System restored', 'The core has been shut down'
                 accent = teal
@@ -250,6 +262,20 @@ class StoryHUD:
                 integrity = f'{integrity}  {story.boss.health} / {story.boss.max_health}'
             label = self.label.render(integrity, True, (255, 190, 205))
             screen.blit(label, label.get_rect(midbottom=(WIDTH // 2, 20)))
+
+            if phase == 'COLLECTOR_FIGHT' and story.collector is not None:
+                bar_width = 340
+                bar = pygame.Rect(WIDTH // 2 - bar_width // 2, 24, bar_width, 14)
+
+                pygame.draw.rect(screen, (55,35,50), bar, border_radius=5)
+
+                fill = round(bar_width * max(0, story.collector.health) / story.collector.max_health)
+
+                if fill > 0:
+                    pygame.draw.rect(screen, (255,75,95), (bar.x, bar.y, fill, bar.height), border_radius=5)
+
+                label = self.label.render('THE COLLECTOR: CORE INTEGRITY', True, (255,190,205))
+                screen.blit(label,label.get_rect(midbottom=(WIDTH // 2, 20)))
 
         dock = pygame.Surface((WIDTH, 42), pygame.SRCALPHA)
         dock.fill((7, 16, 30, 233))
