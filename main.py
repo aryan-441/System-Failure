@@ -502,6 +502,9 @@ while running:
 
         if story.phase == StoryPhase.COLLECTOR_FORMATION and not story.collector_formation_started:
             story.start_collector_formation(enemies,bullets,enemy_bullets,effects,audio)
+        if story.phase == StoryPhase.COLLECTOR_FORMATION and story.phase_time >= story.collector_formation_duration:
+            story.start_collector_fight(enemies, player, effects, audio)
+        
         if story.phase == StoryPhase.SURVIVAL_COMPLETE and story.phase_time >= story.survival_retreat_duration:
             story.start_returning_cores(enemies,bullets,enemy_bullets,ship_sprites,effects,audio)
             story.last_player_position.update(player.position)
@@ -519,7 +522,7 @@ while running:
         story.update_objective(dt, player)
         story.spawn_recovery_enemies(enemies, ship_sprites, player,dt, effects, audio)
 
-        minimum_health = 0 if story.phase in (StoryPhase.OPENING, StoryPhase.RECOVERY, StoryPhase.FINAL_BOSS, StoryPhase.SURVIVAL, StoryPhase.RETURNING_CORES) else 1
+        minimum_health = 0 if story.phase in (StoryPhase.OPENING, StoryPhase.RECOVERY, StoryPhase.FINAL_BOSS, StoryPhase.SURVIVAL, StoryPhase.RETURNING_CORES, StoryPhase.COLLECTOR_FIGHT) else 1
 
     controls_enabled = story is None or story.controls_enabled
 
@@ -986,7 +989,7 @@ while running:
     for enemy in enemies:
         use_core_hud = story and enemy is story.boss and story.phase in (StoryPhase.SURVIVAL, StoryPhase.FINAL_BOSS)
         returning_core = story and story.phase == StoryPhase.RETURNING_CORES and enemy in story.returning_cores
-        ship_sprites.draw_enemy(world_surface, enemy, show_health=not (use_core_hud or returning_core))
+        ship_sprites.draw_enemy(world_surface, enemy, show_health=not (use_core_hud or returning_core or (story and enemy is story.collector)))
         effects.draw_enemy_flash(world_surface, enemy)
         if story and enemy is story.boss:
             story.draw_boss_defences(world_surface)
