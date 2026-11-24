@@ -1,6 +1,7 @@
 
 '''HAVEN GAMEJAM'''
 import random
+import sys
 
 import pygame
 from settings import WIDTH, HEIGHT, FPS, PLAYER_SPEED, ENEMY_SPEED, BULLET_SPEED, BG_COLOUR
@@ -143,7 +144,8 @@ def choose_difficulty(story_only=False):
     finally:
         pygame.mouse.set_visible(previous_cursor)
 
-selection = choose_difficulty()
+test_returning_cores = '--test-returning-cores' in sys.argv
+selection = ('story', 'hard') if test_returning_cores else choose_difficulty()
 
 if selection is None:
     pygame.quit()
@@ -221,6 +223,15 @@ player.health = difficulty['player_health']
 story = StoryMode(player, ship_sprites, story_difficulty) if story_selected else None
 enemies = story.opening_enemies(ship_sprites) if story else create_starting_enemies()
 minimum_health = 0
+
+if test_returning_cores:
+    story.objective_index = len(story.objectives) - 1
+    story.rewarded_parts.update(range(1, len(story.objectives) + 1))
+    story.recovered_upgrades.update(objective['upgrade'] for objective in story.objectives)
+    player.health, ammo = story.resource_limits(difficulty['player_health'], max_ammo)
+    story.phase = StoryPhase.SURVIVAL_COMPLETE
+    story.phase_time = story.survival_retreat_duration
+    enemies.clear()
 
 pygame.mouse.set_visible(False)
 target_font = pygame.font.Font(None,22)
@@ -489,6 +500,8 @@ while running:
             dt = min(dt, story.survival_duration - story.phase_time)
         story.advance(dt, effects, audio)
 
+        if story.phase == StoryPhase.COLLECTOR_FORMATION and not story.collector_formation_started:
+            story.start_collector_formation(enemies,bullets,enemy_bullets,effects,audio)
         if story.phase == StoryPhase.SURVIVAL_COMPLETE and story.phase_time >= story.survival_retreat_duration:
             story.start_returning_cores(enemies,bullets,enemy_bullets,ship_sprites,effects,audio)
             story.last_player_position.update(player.position)
@@ -668,7 +681,7 @@ while running:
             story.update_boss(dt, player, pygame.mouse.get_pressed()[0], audio)
         elif story and enemy in story.returning_cores:
             if story.phase == StoryPhase.RETURNING_CORES:
-                story.update_returning_core(enemy,dt,player,pygame.mouse.get_pressed()[0])
+                story.update_returning_core(enemy, dt, player)
         else:
             enemy.update(dt,player.position)
 
@@ -696,25 +709,18 @@ while running:
                     if not story_shot:
                         enemy.fire_timer = 1.7 if enemy.enemy_type == 'siege_walker' else 2.5
 
-        if story and story.phase == StoryPhase.RETURNING_CORES and enemy in story.returning_cores:
-            if enemy.fire_timer <= 0:
-
-                direction = player.position - enemy.position
-
-                if direction.length_squared() > 0:
-                    core_index = story.returning_cores.index(enemy)
-                    spread = (-12,0,12) if core_index == 1 else (0,) #firing 3 bullets, at the enemy, and to either direction. for other cores, one bullet directly towards the player
-                    # we do 0, so that it's a tuple
-                    speed = (285,255,305)[core_index] #tuple indexing
-                    direction = story.aim_returning_core_shot(enemy, player, speed)
-
-                    for angle in spread:
-                        new_bullet = Bullet(enemy.position, direction.rotate(angle))
-                        new_bullet.speed = speed
-                        enemy_bullets.append(new_bullet)
-
-                    audio.play('core_shot')
-                    enemy.fire_timer = (1.60,2.40,1.30)[core_index]
+        if (story and story.phase == StoryPhase.RETURNING_CORES and enemy in story.returning_cores
+                and enemy.role != 'rammer' and enemy.fire_timer <= 0):
+            gunner = enemy.role == 'gunner'
+            speed = 305 if gunner else 285
+            direction = story.aim_returning_core_shot(enemy, player, speed)
+            if direction.length_squared() > 0:
+                for angle in ((-10, 0, 10) if gunner else (0,)):
+                    new_bullet = Bullet(enemy.position, direction.rotate(angle))
+                    new_bullet.speed = speed
+                    enemy_bullets.append(new_bullet)
+                audio.play('core_shot')
+                enemy.fire_timer = 1.05 if gunner else 1.8
     separate_enemies(enemies, WIDTH, HEIGHT)
 
     #shooting logic
